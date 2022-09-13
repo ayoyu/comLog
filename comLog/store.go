@@ -39,10 +39,8 @@ func NewStore(file *os.File) (*store, error) {
 	return &store{file: file, writeBuf: newWriteBuf, size: uint64(fileInfo.Size())}, nil
 }
 
-func (st *store) Append(b_record []byte) (int, uint64, error) {
+func (st *store) append(b_record []byte) (int, uint64, error) {
 	//TODO: append the record with the timestamp
-	st.mu.Lock()
-	defer st.mu.Unlock()
 	var pos uint64 = st.size // new position of the new record
 	// write the size []byte of the record
 	if err := binary.Write(st.writeBuf, encoding, uint64(len(b_record))); err != nil {
@@ -57,10 +55,8 @@ func (st *store) Append(b_record []byte) (int, uint64, error) {
 	return nn, pos, nil
 }
 
-func (st *store) Read(position uint64) (int, []byte, error) {
+func (st *store) read(position uint64) (int, []byte, error) {
 	// TODO: figure out how to differentiate the record and the timestamp
-	st.mu.RLock()
-	defer st.mu.RUnlock()
 	var nbr_read_bytes int
 	var fetch_position int64 = int64(position)
 	// https://cs.opensource.google/go/go/+/refs/tags/go1.19.1:src/bufio/bufio.go;l=626;drc=54182ff54a687272dd7632c3a963e036ce03cb7c
