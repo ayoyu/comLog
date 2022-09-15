@@ -10,13 +10,14 @@ import (
 
 var encoding = binary.BigEndian
 
-const lenghtOfRecordSize = 8 // uint64
+const lenghtOfRecordSize = 8
 
 type store struct {
 	mu       sync.RWMutex
 	file     *os.File
 	writeBuf *bufio.Writer
 	size     uint64
+	maxBytes int64
 }
 
 type storeError struct {
@@ -28,7 +29,7 @@ func (sError *storeError) Error() string {
 	return fmt.Sprintf("%s: %v", sError.context, sError.err)
 }
 
-func NewStore(file *os.File) (*store, error) {
+func NewStore(file *os.File, maxBytes int64) (*store, error) {
 	fileInfo, err := os.Stat(file.Name())
 	if err != nil {
 		return &store{}, &storeError{err: err, context: "[store] Failed to init store"}
@@ -36,7 +37,7 @@ func NewStore(file *os.File) (*store, error) {
 	// the size of the buffer is (defaultBufSize = 4096)
 	// TODO: maybe make it with NewWriterSize to set the size of the buffer based on some conf
 	var newWriteBuf *bufio.Writer = bufio.NewWriter(file)
-	return &store{file: file, writeBuf: newWriteBuf, size: uint64(fileInfo.Size())}, nil
+	return &store{file: file, writeBuf: newWriteBuf, size: uint64(fileInfo.Size()), maxBytes: maxBytes}, nil
 }
 
 func (st *store) append(b_record []byte) (int, uint64, error) {
