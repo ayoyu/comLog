@@ -18,10 +18,10 @@ type store struct {
 	file     *os.File
 	writeBuf *bufio.Writer
 	size     uint64
-	maxBytes int64
+	maxBytes uint64
 }
 
-func NewStore(file *os.File, maxBytes int64) (*store, error) {
+func NewStore(file *os.File, maxBytes uint64) (*store, error) {
 	fileInfo, err := os.Stat(file.Name())
 	if err != nil {
 		return nil, errors.Wrap(err, "[store] Failed to init store")

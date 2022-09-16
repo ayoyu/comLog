@@ -20,10 +20,10 @@ type index struct {
 	file     *os.File
 	size     uint64
 	mmap     gommap.MMap
-	maxBytes int64
+	maxBytes uint64
 }
 
-func NewIndex(file *os.File, maxBytes int64) (*index, error) {
+func NewIndex(file *os.File, maxBytes uint64) (*index, error) {
 	var (
 		err      error
 		mmap     gommap.MMap
@@ -34,7 +34,7 @@ func NewIndex(file *os.File, maxBytes int64) (*index, error) {
 		return nil, errors.Wrap(err, "[index]: Failed to get fileInfo")
 	}
 	// grow the size of the file to maxByte to get a mmap-buf with the same size
-	err = os.Truncate(file.Name(), maxBytes)
+	err = os.Truncate(file.Name(), int64(maxBytes))
 	if err != nil {
 		return nil, errors.Wrap(err, "[index]: Failed to truncate index file to grow its size to maxBytes")
 	}
@@ -48,8 +48,8 @@ func NewIndex(file *os.File, maxBytes int64) (*index, error) {
 func (idx *index) append(offset, position uint64) error {
 	var curr_pos uint64 = idx.size
 	// maxBytes = len(mmap)
-	if idx.maxBytes-int64(curr_pos) < indexWidth {
-		return errors.Wrap(io.EOF, "[index]: Failed to append (offset, position) no more space EOF")
+	if idx.maxBytes-curr_pos < indexWidth {
+		return errors.Wrap(io.EOF, "[index]: Failed to append (offset, position), no more space EOF")
 	}
 	encoding.PutUint64(idx.mmap[curr_pos:curr_pos+offsetWidth], offset)
 	encoding.PutUint64(idx.mmap[curr_pos+offsetWidth:curr_pos+indexWidth], position)
@@ -75,6 +75,7 @@ func (idx *index) read(offset int64) (uint64, error) {
 }
 
 func (idx *index) nbrOfIndexes() uint64 {
+	// returns nbr of index entries
 	return idx.size / indexWidth
 }
 
