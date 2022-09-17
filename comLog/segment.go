@@ -73,3 +73,50 @@ func (seg *Segment) getIndexPath() string {
 func (seg *Segment) IsFull() bool {
 	return seg.storeFile.size > seg.storeFile.maxBytes || seg.indexFile.size > seg.indexFile.maxBytes
 }
+
+func (seg *Segment) Append(record []byte) (int, error) {
+	var (
+		err        error
+		r_position uint64
+		nn         int // nbr of bytes written
+	)
+	seg.mu.Lock()
+	defer seg.mu.Unlock()
+	nn, r_position, err = seg.storeFile.append(record)
+	if err != nil {
+		return 0, errors.Wrap(err, seg_context+"Failed to write record in store file")
+	}
+	err = seg.indexFile.append(seg.nextOffset, r_position)
+	if err != nil {
+		return 0, errors.Wrap(err, seg_context+"Failed to write to index file")
+	}
+	seg.nextOffset++
+	return nn, nil
+}
+
+func (seg *Segment) Read(offset int64) (int, []byte, error) {
+	var (
+		err          error
+		scaledOffset int64
+		r_position   uint64
+		nn           int // nbr of bytes readed
+		record       []byte
+	)
+	// scale offset to baseOffset
+	if offset == -1 {
+		scaledOffset = -1 // last entry
+	} else {
+		scaledOffset = offset - int64(seg.baseOffset)
+	}
+	seg.mu.RLock()
+	defer seg.mu.RUnlock()
+	r_position, err = seg.indexFile.read(scaledOffset)
+	if err != nil {
+		return 0, nil, errors.Wrap(err, seg_context+"Failed to get record position from index file")
+	}
+	nn, record, err = seg.storeFile.read(r_position)
+	if err != nil {
+		return 0, nil, errors.Wrap(err, seg_context+"Failed to get record from store file")
+	}
+	return nn, record, nil
+}
