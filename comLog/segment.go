@@ -120,3 +120,47 @@ func (seg *Segment) Read(offset int64) (int, []byte, error) {
 	}
 	return nn, record, nil
 }
+
+func (seg *Segment) Close() error {
+	seg.mu.Lock()
+	defer seg.mu.Unlock()
+	var err error
+	err = seg.indexFile.close()
+	if err != nil {
+		return errors.Wrap(err, seg_context+"Failed to close index file")
+	}
+	err = seg.storeFile.close()
+	if err != nil {
+		return errors.Wrap(err, seg_context+"Failed to close store file")
+	}
+	return nil
+}
+
+func (seg *Segment) Remove() error {
+	var err error
+	err = seg.Close()
+	if err != nil {
+		return err
+	}
+	err = os.Remove(seg.storeFile.Name())
+	if err != nil {
+		return errors.Wrap(err, seg_context+"Failed to remove index file")
+	}
+	err = os.Remove(seg.indexFile.Name())
+	if err != nil {
+		return errors.Wrap(err, seg_context+"Failed to remove store file")
+	}
+	return nil
+}
+
+func (seg *Segment) ReadAt(b []byte, position uint64) (int, error) {
+	var (
+		err error
+		nn  int
+	)
+	nn, err = seg.storeFile.ReadAt(b, position)
+	if err != nil {
+		return 0, errors.Wrap(err, seg_context+"Faild to ReadAt")
+	}
+	return nn, nil
+}

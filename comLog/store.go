@@ -89,11 +89,13 @@ func (st *store) ReadAt(b []byte, position uint64) (int, error) {
 	return nn, nil
 }
 
-func (st *store) Close() error {
-	st.mu.Lock()
-	defer st.mu.Unlock()
+func (st *store) close() error {
 	if err := st.writeBuf.Flush(); err != nil {
 		return errors.Wrap(err, store_context+"Faile to close the store file")
 	}
 	return st.file.Close()
+}
+
+func (st *store) Name() string {
+	return st.file.Name()
 }

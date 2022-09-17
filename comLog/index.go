@@ -92,3 +92,7 @@ func (idx *index) close() error {
 	}
 	return idx.file.Close()
 }
+
+func (idx *index) Name() string {
+	return idx.file.Name()
+}
