@@ -12,13 +12,13 @@ const test_store_file = "test_store_file_"
 
 func getStore(maxBytes uint64) (*store, error) {
 	file := getTempfile(test_store_file)
-	store, err := NewStore(file, maxBytes)
+	store, err := newStore(file, maxBytes)
 	return store, err
 }
 
 func TestNewStore(t *testing.T) {
 	store, err := getStore(DefaultMaxBytesStore)
-	assert.Equal(t, err, nil)
+	assert.Nil(t, err)
 	fileInfo := getFileInfo(store.file)
 	// Size will access len(writeBuf.buf) where buf is []byte
 	assert.Equal(t, store.writeBuf.Size(), int(DefaultMaxBytesStore), "error: len(write.buf) != maxBytes")
@@ -48,12 +48,13 @@ func getStoreTestCases() []StoreDataTestCases {
 
 func TestStoreAppend(t *testing.T) {
 	testcases := getStoreTestCases()
-	store, _ := getStore(DefaultMaxBytesStore)
+	store, err := getStore(DefaultMaxBytesStore)
+	assert.Nil(t, err)
 	curr_buffered_bytes_data := 0
 	for _, case_s := range testcases {
 		t.Logf(case_s.casename)
 		nn, pos, err := store.append(case_s.record)
-		assert.Equal(t, err, nil, "err is not nil")
+		assert.Nil(t, err, "err is not nil")
 		assert.Equal(t, nn, case_s.nn, "nn written bytes is not correct")
 		assert.Equal(t, pos, case_s.pos, "curr pos of record is not correct")
 		curr_buffered_bytes_data += case_s.nn
@@ -63,13 +64,15 @@ func TestStoreAppend(t *testing.T) {
 
 func TestStoreRead(t *testing.T) {
 	testcases := getStoreTestCases()
-	store, _ := getStore(DefaultMaxBytesStore)
+	store, err := getStore(DefaultMaxBytesStore)
+	assert.Nil(t, err)
 	for _, case_s := range testcases {
 		t.Logf("Write: " + case_s.casename)
-		_, pos, _ := store.append(case_s.record)
+		_, pos, err := store.append(case_s.record)
+		assert.Nil(t, err)
 		t.Logf("Read: " + case_s.casename)
 		nn, read_record, err := store.read(pos)
-		assert.Equal(t, err, nil, "err is not nil")
+		assert.Nil(t, err, "err is not nil")
 		assert.Equal(t, nn, case_s.nn, "read nn bytes is not correct")
 		assert.Equal(t, read_record, case_s.record, "record written != readed record")
 
@@ -80,7 +83,8 @@ func TestStoreClose(t *testing.T) {
 	file := getTempfile(test_store_file)
 	fileInfo := getFileInfo(file)
 	assert.Equal(t, int(fileInfo.Size()), 0)
-	store, _ := NewStore(file, DefaultMaxBytesStore)
+	store, err := newStore(file, DefaultMaxBytesStore)
+	assert.Nil(t, err)
 	// make some writes to test the buffer flush
 	testcases := getStoreTestCases()
 	curr_buffered_bytes_data := 0
@@ -88,10 +92,10 @@ func TestStoreClose(t *testing.T) {
 		store.append(case_s.record)
 		curr_buffered_bytes_data += case_s.nn
 	}
-	err := store.close()
-	assert.Equal(t, err, nil)
+	err = store.close()
+	assert.Nil(t, err)
 	reopenFile, err := reopenClosedFile(store.Name())
-	assert.Equal(t, err, nil)
+	assert.Nil(t, err)
 	reopenFileInfo := getFileInfo(reopenFile)
 	assert.Equal(
 		t, int(reopenFileInfo.Size()), curr_buffered_bytes_data,
@@ -101,6 +105,7 @@ func TestStoreClose(t *testing.T) {
 }
 
 func TestStoreName(t *testing.T) {
-	store, _ := getStore(DefaultMaxBytesStore)
+	store, err := getStore(DefaultMaxBytesStore)
+	assert.Nil(t, err)
 	assert.Equal(t, store.Name(), store.file.Name())
 }

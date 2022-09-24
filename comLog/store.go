@@ -24,7 +24,7 @@ type store struct {
 	maxBytes uint64
 }
 
-func NewStore(file *os.File, maxBytes uint64) (*store, error) {
+func newStore(file *os.File, maxBytes uint64) (*store, error) {
 	fileInfo, err := os.Stat(file.Name())
 	if err != nil {
 		return nil, errors.Wrap(err, store_context+"Failed to init store")
@@ -79,7 +79,6 @@ func (st *store) read(position uint64) (int, []byte, error) {
 }
 
 func (st *store) ReadAt(b []byte, position uint64) (int, error) {
-	// TODO: Decide on this helper to keep or to delete
 	st.mu.RLock()
 	defer st.mu.RUnlock()
 	nn, err := st.file.ReadAt(b, int64(position))

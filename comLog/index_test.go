@@ -13,7 +13,7 @@ const test_index_file = "test_index_file_"
 
 func getIndex(maxbytes uint64) (*index, error) {
 	file := getTempfile(test_index_file)
-	index, err := NewIndex(file, maxbytes)
+	index, err := newIndex(file, maxbytes)
 	if err != nil {
 		return nil, err
 	}
@@ -24,7 +24,7 @@ func TestNewIndex(t *testing.T) {
 	file := getTempfile(test_index_file)
 	fileInfo := getFileInfo(file) // before Truncate the file (realSize)
 	assert.NotEqual(t, fileInfo.Size(), DefaultMaxBytesIndex)
-	index, err := NewIndex(file, DefaultMaxBytesIndex)
+	index, err := newIndex(file, DefaultMaxBytesIndex)
 	assert.Nil(t, err)
 	assert.Equal(t, int64(index.size), fileInfo.Size())
 	assert.Equal(t, len(index.mmap), int(DefaultMaxBytesIndex))

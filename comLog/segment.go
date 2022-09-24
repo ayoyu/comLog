@@ -39,7 +39,7 @@ func NewSegment(segment_dir string, smaxBytes, idxMaxBytes uint64, baseOffset ui
 	if err != nil {
 		return nil, errors.Wrap(err, seg_context+"Failed to openFile store file")
 	}
-	storeFile, err = NewStore(sfile, smaxBytes)
+	storeFile, err = newStore(sfile, smaxBytes)
 	if err != nil {
 		return nil, errors.Wrap(err, seg_context+"Failed to init store file")
 	}
@@ -47,7 +47,7 @@ func NewSegment(segment_dir string, smaxBytes, idxMaxBytes uint64, baseOffset ui
 	if err != nil {
 		return nil, errors.Wrap(err, seg_context+"Failed to openFile index file")
 	}
-	indexFile, err = NewIndex(idxfile, idxMaxBytes)
+	indexFile, err = newIndex(idxfile, idxMaxBytes)
 	if err != nil {
 		return nil, errors.Wrap(err, seg_context+"Failed to init index file")
 	}
@@ -70,7 +70,9 @@ func (seg *Segment) getIndexPath() string {
 	return filepath.Join(seg.path, fmt.Sprintf(fileFormat, seg.baseOffset, indexFileSuffix))
 }
 
-func (seg *Segment) IsFull() bool {
+func (seg *Segment) isFull() bool {
+	// the lock will be at the Log level to check if it creates a new
+	// active segment
 	return seg.storeFile.size > seg.storeFile.maxBytes || seg.indexFile.size > seg.indexFile.maxBytes
 }
 

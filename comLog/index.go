@@ -24,7 +24,7 @@ type index struct {
 	maxBytes uint64
 }
 
-func NewIndex(file *os.File, maxBytes uint64) (*index, error) {
+func newIndex(file *os.File, maxBytes uint64) (*index, error) {
 	var (
 		err      error
 		mmap     gommap.MMap
