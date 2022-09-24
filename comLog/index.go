@@ -34,7 +34,8 @@ func NewIndex(file *os.File, maxBytes uint64) (*index, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, index_context+"Failed to get fileInfo")
 	}
-	// grow the size of the file to maxByte to get a mmap-buf with the same size
+	var realFileSize uint64 = uint64(fileInfo.Size()) // Real size before growing the file index
+	// grow the size of the file with spaces to maxByte to get a mmap-buf with the same size
 	err = os.Truncate(file.Name(), int64(maxBytes))
 	if err != nil {
 		return nil, errors.Wrap(err, index_context+"Failed to truncate index file to grow its size to maxBytes")
@@ -43,7 +44,7 @@ func NewIndex(file *os.File, maxBytes uint64) (*index, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, index_context+"Failed to mmap the index file")
 	}
-	return &index{file: file, size: uint64(fileInfo.Size()), mmap: mmap, maxBytes: maxBytes}, nil
+	return &index{file: file, size: realFileSize, mmap: mmap, maxBytes: maxBytes}, nil
 }
 
 func (idx *index) append(offset, position uint64) error {
