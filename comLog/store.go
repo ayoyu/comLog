@@ -30,8 +30,7 @@ func NewStore(file *os.File, maxBytes uint64) (*store, error) {
 		return nil, errors.Wrap(err, store_context+"Failed to init store")
 	}
 	// the size of the buffer is (defaultBufSize = 4096)
-	// TODO: maybe make it with NewWriterSize to set the size of the buffer based on some conf
-	var newWriteBuf *bufio.Writer = bufio.NewWriter(file)
+	var newWriteBuf *bufio.Writer = bufio.NewWriterSize(file, int(maxBytes))
 	return &store{file: file, writeBuf: newWriteBuf, size: uint64(fileInfo.Size()), maxBytes: maxBytes}, nil
 }
 
