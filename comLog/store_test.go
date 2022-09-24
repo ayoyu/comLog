@@ -1,9 +1,6 @@
 package comLog
 
 import (
-	"fmt"
-	"io/ioutil"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,20 +8,10 @@ import (
 
 var DefaultMaxBytes uint64 = 4096
 
-const test_stor_file = "test_store_file"
-
-func getTempfile() *os.File {
-	file, _ := ioutil.TempFile("", test_stor_file)
-	return file
-}
-
-func getFileInfo(file *os.File) os.FileInfo {
-	fileInfo, _ := os.Stat(file.Name())
-	return fileInfo
-}
+const test_store_file = "test_store_file_"
 
 func getStore(maxBytes uint64) (*store, error) {
-	file := getTempfile()
+	file := getTempfile(test_store_file)
 	store, err := NewStore(file, maxBytes)
 	return store, err
 }
@@ -89,16 +76,8 @@ func TestRead(t *testing.T) {
 	}
 }
 
-func reopenClosedFile(filepath string) *os.File {
-	file, err := os.OpenFile(filepath, os.O_RDONLY, 0644)
-	if err != nil {
-		fmt.Println("Here: ", err)
-	}
-	return file
-}
-
 func TestClose(t *testing.T) {
-	file := getTempfile()
+	file := getTempfile(test_store_file)
 	fileInfo := getFileInfo(file)
 	assert.Equal(t, int(fileInfo.Size()), 0)
 	store, _ := NewStore(file, DefaultMaxBytes)
@@ -111,7 +90,8 @@ func TestClose(t *testing.T) {
 	}
 	err := store.close()
 	assert.Equal(t, err, nil)
-	reopenFile := reopenClosedFile(store.Name())
+	reopenFile, err := reopenClosedFile(store.Name())
+	assert.Equal(t, err, nil)
 	reopenFileInfo := getFileInfo(reopenFile)
 	assert.Equal(
 		t, int(reopenFileInfo.Size()), curr_buffered_bytes_data,
