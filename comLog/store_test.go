@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var DefaultMaxBytes uint64 = 4096
+var DefaultMaxBytesStore uint64 = 4096
 
 const test_store_file = "test_store_file_"
 
@@ -17,28 +17,28 @@ func getStore(maxBytes uint64) (*store, error) {
 }
 
 func TestNewStore(t *testing.T) {
-	store, err := getStore(DefaultMaxBytes)
+	store, err := getStore(DefaultMaxBytesStore)
 	assert.Equal(t, err, nil)
 	fileInfo := getFileInfo(store.file)
 	// Size will access len(writeBuf.buf) where buf is []byte
-	assert.Equal(t, store.writeBuf.Size(), int(DefaultMaxBytes), "error: len(write.buf) != maxBytes")
+	assert.Equal(t, store.writeBuf.Size(), int(DefaultMaxBytesStore), "error: len(write.buf) != maxBytes")
 	assert.Equal(t, store.size, uint64(fileInfo.Size()), "store.size != file.size")
-	assert.Equal(t, store.maxBytes, DefaultMaxBytes)
+	assert.Equal(t, store.maxBytes, DefaultMaxBytesStore)
 }
 
-type DataTestCases struct {
+type StoreDataTestCases struct {
 	casename string
 	record   []byte
 	nn       int
 	pos      uint64
 }
 
-func getTestCases() []DataTestCases {
+func getStoreTestCases() []StoreDataTestCases {
 	key1, key2, key3 := "First Entry", "Second Entry", "Third Entry"
 	pos1 := uint64(0)
 	pos2 := uint64(len(key1)) + lenghtOfRecordSize        // from previous written key1
 	pos3 := pos2 + uint64(len(key2)) + lenghtOfRecordSize // from previous written key1+key2
-	testcases := []DataTestCases{
+	testcases := []StoreDataTestCases{
 		{key1, []byte(key1), len(key1) + lenghtOfRecordSize, pos1},
 		{key2, []byte(key2), len(key2) + lenghtOfRecordSize, pos2},
 		{key3, []byte(key3), len(key3) + lenghtOfRecordSize, pos3},
@@ -46,9 +46,9 @@ func getTestCases() []DataTestCases {
 	return testcases
 }
 
-func TestAppend(t *testing.T) {
-	testcases := getTestCases()
-	store, _ := getStore(DefaultMaxBytes)
+func TestStoreAppend(t *testing.T) {
+	testcases := getStoreTestCases()
+	store, _ := getStore(DefaultMaxBytesStore)
 	curr_buffered_bytes_data := 0
 	for _, case_s := range testcases {
 		t.Logf(case_s.casename)
@@ -61,9 +61,9 @@ func TestAppend(t *testing.T) {
 	}
 }
 
-func TestRead(t *testing.T) {
-	testcases := getTestCases()
-	store, _ := getStore(DefaultMaxBytes)
+func TestStoreRead(t *testing.T) {
+	testcases := getStoreTestCases()
+	store, _ := getStore(DefaultMaxBytesStore)
 	for _, case_s := range testcases {
 		t.Logf("Write: " + case_s.casename)
 		_, pos, _ := store.append(case_s.record)
@@ -76,13 +76,13 @@ func TestRead(t *testing.T) {
 	}
 }
 
-func TestClose(t *testing.T) {
+func TestStoreClose(t *testing.T) {
 	file := getTempfile(test_store_file)
 	fileInfo := getFileInfo(file)
 	assert.Equal(t, int(fileInfo.Size()), 0)
-	store, _ := NewStore(file, DefaultMaxBytes)
+	store, _ := NewStore(file, DefaultMaxBytesStore)
 	// make some writes to test the buffer flush
-	testcases := getTestCases()
+	testcases := getStoreTestCases()
 	curr_buffered_bytes_data := 0
 	for _, case_s := range testcases {
 		store.append(case_s.record)
@@ -101,6 +101,6 @@ func TestClose(t *testing.T) {
 }
 
 func TestStoreName(t *testing.T) {
-	store, _ := getStore(DefaultMaxBytes)
+	store, _ := getStore(DefaultMaxBytesStore)
 	assert.Equal(t, store.Name(), store.file.Name())
 }

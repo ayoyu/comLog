@@ -79,6 +79,7 @@ func (st *store) read(position uint64) (int, []byte, error) {
 }
 
 func (st *store) ReadAt(b []byte, position uint64) (int, error) {
+	// TODO: Decide on this helper to keep or to delete
 	st.mu.RLock()
 	defer st.mu.RUnlock()
 	nn, err := st.file.ReadAt(b, int64(position))

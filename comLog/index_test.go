@@ -127,7 +127,7 @@ func TestIndexClose(t *testing.T) {
 	index, err := getIndex(DefaultMaxBytesIndex)
 	assert.Nil(t, err)
 	fileInfo := getFileInfo(index.file) // after(NewIndex) Truncate the file
-	assert.Equal(t, fileInfo.Size(), int64(DefaultMaxBytes))
+	assert.Equal(t, fileInfo.Size(), int64(DefaultMaxBytesIndex))
 	// write some entries to test the Sync/Flush/Truncate
 	testcases := []IndexDataTestCases{
 		{0, 43}, {1, 60}, {2, 99},
