@@ -12,7 +12,7 @@ var DefaultMaxBytesIndex uint64 = 4096
 const test_index_file = "test_index_file_"
 
 func getIndex(maxbytes uint64) (*index, error) {
-	file := getTempfile(test_index_file)
+	file := getTempfile("", test_index_file)
 	index, err := newIndex(file, maxbytes)
 	if err != nil {
 		return nil, err
@@ -21,7 +21,7 @@ func getIndex(maxbytes uint64) (*index, error) {
 }
 
 func TestNewIndex(t *testing.T) {
-	file := getTempfile(test_index_file)
+	file := getTempfile("", test_index_file)
 	fileInfo := getFileInfo(file) // before Truncate the file (realSize)
 	assert.NotEqual(t, fileInfo.Size(), DefaultMaxBytesIndex)
 	index, err := newIndex(file, DefaultMaxBytesIndex)

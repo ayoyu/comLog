@@ -11,7 +11,7 @@ var DefaultMaxBytesStore uint64 = 4096
 const test_store_file = "test_store_file_"
 
 func getStore(maxBytes uint64) (*store, error) {
-	file := getTempfile(test_store_file)
+	file := getTempfile("", test_store_file)
 	store, err := newStore(file, maxBytes)
 	return store, err
 }
@@ -86,7 +86,7 @@ func TestStoreRead(t *testing.T) {
 }
 
 func TestStoreClose(t *testing.T) {
-	file := getTempfile(test_store_file)
+	file := getTempfile("", test_store_file)
 	fileInfo := getFileInfo(file)
 	assert.Equal(t, int(fileInfo.Size()), 0)
 	store, err := newStore(file, DefaultMaxBytesStore)

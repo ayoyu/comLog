@@ -5,8 +5,8 @@ import (
 	"os"
 )
 
-func getTempfile(filename string) *os.File {
-	file, _ := os.CreateTemp("", filename)
+func getTempfile(dir, filename string) *os.File {
+	file, _ := os.CreateTemp(dir, filename)
 	return file
 }
 
