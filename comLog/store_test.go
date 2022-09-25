@@ -24,6 +24,8 @@ func TestNewStore(t *testing.T) {
 	assert.Equal(t, store.writeBuf.Size(), int(DefaultMaxBytesStore), "error: len(write.buf) != maxBytes")
 	assert.Equal(t, store.size, uint64(fileInfo.Size()), "store.size != file.size")
 	assert.Equal(t, store.maxBytes, DefaultMaxBytesStore)
+	// remove temp test data
+	removeTempFile(store.file.Name())
 }
 
 type StoreDataTestCases struct {
@@ -60,6 +62,8 @@ func TestStoreAppend(t *testing.T) {
 		curr_buffered_bytes_data += case_s.nn
 		assert.Equal(t, store.writeBuf.Buffered(), curr_buffered_bytes_data)
 	}
+	// remove temp test data
+	removeTempFile(store.file.Name())
 }
 
 func TestStoreRead(t *testing.T) {
@@ -77,6 +81,8 @@ func TestStoreRead(t *testing.T) {
 		assert.Equal(t, read_record, case_s.record, "record written != readed record")
 
 	}
+	// remove temp test data
+	removeTempFile(store.file.Name())
 }
 
 func TestStoreClose(t *testing.T) {
@@ -101,6 +107,8 @@ func TestStoreClose(t *testing.T) {
 		t, int(reopenFileInfo.Size()), curr_buffered_bytes_data,
 		"Closed/flushed file store size != buffered data size",
 	)
+	// remove temp test data
+	removeTempFile(store.file.Name())
 
 }
 
@@ -108,4 +116,6 @@ func TestStoreName(t *testing.T) {
 	store, err := getStore(DefaultMaxBytesStore)
 	assert.Nil(t, err)
 	assert.Equal(t, store.Name(), store.file.Name())
+	// remove temp test data
+	removeTempFile(store.file.Name())
 }

@@ -29,6 +29,8 @@ func TestNewIndex(t *testing.T) {
 	assert.Equal(t, int64(index.size), fileInfo.Size())
 	assert.Equal(t, len(index.mmap), int(DefaultMaxBytesIndex))
 	assert.Equal(t, index.maxBytes, DefaultMaxBytesIndex)
+	// remove the temp test data
+	removeTempFile(file.Name())
 }
 
 type IndexDataTestCases struct {
@@ -64,6 +66,8 @@ func TestIndexAppend(t *testing.T) {
 		curr_buf_size := trackMmapBuffer(index.mmap)
 		assert.Equal(t, curr_buf_size, curr_buffered_byte_index)
 	}
+	// remove the temp test data
+	removeTempFile(index.file.Name())
 }
 
 func TestIndexAppendEOF(t *testing.T) {
@@ -76,6 +80,8 @@ func TestIndexAppendEOF(t *testing.T) {
 		t, err.Error(),
 		"[index]: Failed to append (offset, position), no more space EOF: EOF",
 	)
+	// remove the temp test data
+	removeTempFile(index.file.Name())
 }
 
 func TestIndexRead(t *testing.T) {
@@ -94,7 +100,8 @@ func TestIndexRead(t *testing.T) {
 		assert.Equal(t, read_pos, case_s.position)
 		assert.Equal(t, last_entry_pod, case_s.position)
 	}
-
+	// remove the temp test data
+	removeTempFile(index.file.Name())
 }
 
 func TestIndexReadOutofRangeError(t *testing.T) {
@@ -107,6 +114,8 @@ func TestIndexReadOutofRangeError(t *testing.T) {
 		t, err.Error(),
 		"[index]: The given offset is not yet filled (out of range)",
 	)
+	// remove the temp test data
+	removeTempFile(index.file.Name())
 }
 
 func TestIndexNbrOfIndexes(t *testing.T) {
@@ -121,6 +130,8 @@ func TestIndexNbrOfIndexes(t *testing.T) {
 		count++
 		assert.Equal(t, index.nbrOfIndexes(), count)
 	}
+	// remove the temp test data
+	removeTempFile(index.file.Name())
 }
 
 func TestIndexClose(t *testing.T) {
@@ -143,4 +154,6 @@ func TestIndexClose(t *testing.T) {
 	assert.Nil(t, err)
 	reopenFileInfo := getFileInfo(reopenFile)
 	assert.Equal(t, reopenFileInfo.Size(), lastSize)
+	// remove the temp test data
+	removeTempFile(index.file.Name())
 }

@@ -1,13 +1,18 @@
 package comLog
 
 import (
-	"io/ioutil"
+	"fmt"
 	"os"
 )
 
 func getTempfile(filename string) *os.File {
-	file, _ := ioutil.TempFile("", filename)
+	file, _ := os.CreateTemp("", filename)
 	return file
+}
+
+func getTemDir(dirname string) string {
+	dirpath, _ := os.MkdirTemp("", dirname)
+	return dirpath
 }
 
 func getFileInfo(file *os.File) os.FileInfo {
@@ -21,4 +26,26 @@ func reopenClosedFile(filepath string) (*os.File, error) {
 		return nil, err
 	}
 	return file, nil
+}
+
+func removeTempFile(filepath string) {
+	err := os.Remove(filepath)
+	if err != nil {
+		fmt.Println(
+			"Test: Cannot remove the temporory file: ",
+			filepath,
+			" we will just pass try to remove it later :)",
+		)
+	}
+}
+
+func removeTempDir(dirpath string) {
+	err := os.RemoveAll(dirpath)
+	if err != nil {
+		fmt.Println(
+			"Test: Cannot remove the temporory dir: ",
+			dirpath,
+			" we will just pass try to remove it later :)",
+		)
+	}
 }
