@@ -10,7 +10,7 @@ func getTempfile(dir, filename string) *os.File {
 	return file
 }
 
-func getTemDir(dirname string) string {
+func getTempDir(dirname string) string {
 	dirpath, _ := os.MkdirTemp("", dirname)
 	return dirpath
 }
