@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"encoding/binary"
 	"os"
-	"sync"
 
 	"github.com/pkg/errors"
 )
@@ -17,7 +16,6 @@ const (
 )
 
 type store struct {
-	mu       sync.RWMutex
 	file     *os.File
 	writeBuf *bufio.Writer
 	size     uint64
@@ -78,9 +76,7 @@ func (st *store) read(position uint64) (int, []byte, error) {
 	return nbr_read_bytes, b_record, nil
 }
 
-func (st *store) ReadAt(b []byte, position uint64) (int, error) {
-	st.mu.RLock()
-	defer st.mu.RUnlock()
+func (st *store) readAt(b []byte, position uint64) (int, error) {
 	nn, err := st.file.ReadAt(b, int64(position))
 	if err != nil {
 		return 0, errors.Wrap(err, store_context+"Faile to read at")

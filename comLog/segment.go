@@ -160,7 +160,9 @@ func (seg *Segment) ReadAt(b []byte, position uint64) (int, error) {
 		err error
 		nn  int
 	)
-	nn, err = seg.storeFile.ReadAt(b, position)
+	seg.mu.RLock()
+	defer seg.mu.RUnlock()
+	nn, err = seg.storeFile.readAt(b, position)
 	if err != nil {
 		return 0, errors.Wrap(err, seg_context+"Faild to ReadAt")
 	}
