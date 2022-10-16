@@ -16,6 +16,8 @@ const (
 	seg_context     = "[Segment]: "
 )
 
+var NotActiveAnymore = errors.New("Abort append, the Segment becomes old")
+
 type Segment struct {
 	mu         sync.RWMutex
 	storeFile  *store
@@ -23,6 +25,7 @@ type Segment struct {
 	baseOffset uint64 // will be set from the previous segment nextOffset
 	nextOffset uint64
 	path       string
+	isActive   bool
 }
 
 func NewSegment(segment_dir string, smaxBytes, idxMaxBytes uint64, baseOffset uint64) (*Segment, error) {
@@ -71,8 +74,8 @@ func (seg *Segment) getIndexPath() string {
 }
 
 func (seg *Segment) isFull() bool {
-	// the lock will be at the Log level to check if it creates a new
-	// active segment
+	seg.mu.Lock()
+	defer seg.mu.Unlock()
 	return seg.storeFile.size >= seg.storeFile.maxBytes || seg.indexFile.size >= seg.indexFile.maxBytes
 }
 
@@ -84,6 +87,9 @@ func (seg *Segment) Append(record []byte) (uint64, int, error) {
 	)
 	seg.mu.Lock()
 	defer seg.mu.Unlock()
+	if !seg.isActive {
+		return 0, 0, NotActiveAnymore
+	}
 	var curr_offset uint64 = seg.nextOffset
 	nn, r_position, err = seg.storeFile.append(record)
 	if err != nil {
@@ -95,6 +101,18 @@ func (seg *Segment) Append(record []byte) (uint64, int, error) {
 	}
 	seg.nextOffset++
 	return curr_offset, nn, nil
+}
+
+func (seg *Segment) getNextOffset() uint64 {
+	seg.mu.Lock()
+	defer seg.mu.Unlock()
+	return seg.nextOffset
+}
+
+func (seg *Segment) setIsActive(b bool) {
+	seg.mu.Lock()
+	seg.isActive = b
+	seg.mu.Unlock()
 }
 
 func (seg *Segment) Read(offset int64) (int, []byte, error) {

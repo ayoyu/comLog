@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 var ConfigError = errors.New("Configuration error")
@@ -22,9 +23,9 @@ type Config struct {
 
 type Log struct {
 	Config
-	mu            sync.RWMutex
-	segments      []*Segment
-	activeSegment *Segment
+	mu             sync.RWMutex
+	segments       []*Segment
+	vactiveSegment atomic.Value
 }
 
 func NewLog(conf Config) (*Log, error) {
@@ -34,7 +35,7 @@ func NewLog(conf Config) (*Log, error) {
 	if conf.StoreMaxBytes == 0 || conf.IndexMaxBytes == 0 {
 		return nil, ConfigError
 	}
-	var log *Log = &Log{Config: conf, segments: make([]*Segment, 0, conf.NbrOfSegments), activeSegment: nil}
+	var log *Log = &Log{Config: conf, segments: make([]*Segment, 0, conf.NbrOfSegments)}
 	var err error = log.setup()
 	if err != nil {
 		return nil, err
@@ -85,67 +86,78 @@ func (log *Log) setup() error {
 		})
 
 		for _, baseoffset := range baseOffsets {
-			seg, err = log.createNewSegment(baseoffset, false)
+			seg, err = NewSegment(log.Data_dir, log.StoreMaxBytes, log.IndexMaxBytes, baseoffset)
 			if err != nil {
 				return err
 			}
 			log.segments = append(log.segments, seg)
 		}
-		log.activeSegment = log.segments[len(log.segments)-1]
 	} else {
 		// first segment with InitOffset=0
-		seg, err = log.createNewSegment(0, true)
+		seg, err = NewSegment(log.Data_dir, log.StoreMaxBytes, log.IndexMaxBytes, 0)
 		if err != nil {
 			return err
 		}
 		log.segments = append(log.segments, seg)
 	}
+	log.segments[len(log.segments)-1].setIsActive(true)
+	log.vactiveSegment.Store(log.segments[len(log.segments)-1])
 	return nil
 }
 
-func (log *Log) createNewSegment(baseoffset uint64, setActive bool) (*Segment, error) {
-	var (
-		seg *Segment
-		err error
-	)
-	seg, err = NewSegment(log.Data_dir, log.StoreMaxBytes, log.IndexMaxBytes, baseoffset)
-	if err != nil {
-		return nil, err
-	}
-	if setActive {
-		log.activeSegment = seg
-	}
-	return seg, nil
+func (log *Log) loadActiveSeg() *Segment {
+	return log.vactiveSegment.Load().(*Segment)
 }
 
-func (log *Log) checkActiveSegment() error {
-	// check if new active segment must be created
+func (log *Log) createNewActiveSeg() error {
+	var oldSegment *Segment = log.loadActiveSeg()
+	oldSegment.setIsActive(false)
+	var nextBaseOffset uint64 = oldSegment.getNextOffset()
 	var err error
-	var newSeg *Segment
-	log.mu.Lock()
-	defer log.mu.Unlock()
-	if log.activeSegment.isFull() {
-		var nextBaseOffset uint64 = log.activeSegment.nextOffset
-		newSeg, err = log.createNewSegment(nextBaseOffset, true)
-		if err != nil {
-			return err
-		}
-		log.segments = append(log.segments, newSeg)
+	var newActiveSeg *Segment
+	newActiveSeg, err = NewSegment(log.Data_dir, log.StoreMaxBytes, log.IndexMaxBytes, nextBaseOffset)
+	if err != nil {
+		return err
 	}
+	log.segments = append(log.segments, newActiveSeg)
+	newActiveSeg.setIsActive(true)
+	log.vactiveSegment.Store(newActiveSeg)
 	return nil
+}
+
+func (log *Log) splitForNewActiveSeg() bool {
+	return log.loadActiveSeg().isFull()
 }
 
 func (log *Log) Append(record []byte) (uint64, int, error) {
-	var err error
-	err = log.checkActiveSegment()
-	if err != nil {
-		return 0, 0, err
+	// to ensure split correctness
+	log.mu.Lock()
+	if log.splitForNewActiveSeg() {
+		var err = log.createNewActiveSeg()
+		if err != nil {
+			log.mu.Unlock()
+			return 0, 0, err
+		}
 	}
+	log.mu.Unlock()
 	var (
+		err    error
 		offset uint64
 		nn     int
 	)
-	offset, nn, err = log.activeSegment.Append(record)
+	// Delayed append can happen from a routine that was not able to acquire
+	// the activeSegment lock, and so when this happen (lock is acquired) probably
+	// the segment that the routine is referencing from previous `loadActiveSeg`
+	// is not anymore the active segment (i.e. `log.vactiveSegment.Store` of active segement happenned)
+	// that's why we should retry in this case to **re-load** the active segment.
+	// This behavior occur during the split segment, because we don't lock the whole append with log mutex
+	for {
+		// retry
+		offset, nn, err = log.loadActiveSeg().Append(record)
+		if err != NotActiveAnymore {
+			break
+		}
+	}
 	if err != nil {
 		return 0, 0, err
 	}
@@ -153,6 +165,7 @@ func (log *Log) Append(record []byte) (uint64, int, error) {
 }
 
 func (log *Log) segmentSearch(offset int64) *Segment {
+	// to protect log.segements slice
 	log.mu.RLock()
 	defer log.mu.RUnlock()
 	if offset == -1 {
@@ -166,6 +179,8 @@ func (log *Log) segmentSearch(offset int64) *Segment {
 	var mid int
 	for left <= right {
 		mid = left + ((right - left) >> 1)
+		// TODO: this can be an issue if log.segments[mid]=activeSeg (last one)
+		// when you read the nextOffset it can be written by another append
 		if uOffset >= log.segments[mid].nextOffset {
 			left = mid + 1
 		} else if uOffset < log.segments[mid].baseOffset {

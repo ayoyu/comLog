@@ -85,6 +85,7 @@ func TestSegmentBasicAppend(t *testing.T) {
 	var baseOffset uint64 = 0
 	seg, err := NewSegment(dirpath, DefaultMaxBytesStore, DefaultMaxBytesStore, baseOffset)
 	assert.Nil(t, err)
+	seg.setIsActive(true)
 	testcases := []SegmentTestData{
 		{[]byte("Hello Word"), baseOffset},
 		{[]byte("Second Hello"), baseOffset + 1},
@@ -106,6 +107,7 @@ func TestSegmentBasicRead(t *testing.T) {
 	var baseOffset uint64 = 100
 	seg, err := NewSegment(dirpath, DefaultMaxBytesStore, DefaultMaxBytesStore, baseOffset)
 	assert.Nil(t, err)
+	seg.setIsActive(true)
 	testcases := []SegmentTestData{
 		{[]byte("Hello Word"), baseOffset},       // 100
 		{[]byte("Second Hello"), baseOffset + 1}, // 101

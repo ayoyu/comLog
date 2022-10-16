@@ -56,13 +56,13 @@ func TestLogSetupFomPreviousRun(t *testing.T) {
 		)
 
 	}
-	assert.NotNil(t, log.activeSegment)
+	assert.NotNil(t, log.loadActiveSeg())
 	assert.Equal(
-		t, log.activeSegment.indexFile.file.Name(),
+		t, log.loadActiveSeg().indexFile.file.Name(),
 		path.Join(log_dir, "40.index"),
 	)
 	assert.Equal(
-		t, log.activeSegment.storeFile.file.Name(),
+		t, log.loadActiveSeg().storeFile.file.Name(),
 		path.Join(log_dir, "40.store"),
 	)
 }
@@ -75,13 +75,13 @@ func TestLogSetupFirstRun(t *testing.T) {
 	err := log.setup()
 	assert.Nil(t, err)
 	assert.Equal(t, len(log.segments), 1)
-	assert.NotNil(t, log.activeSegment)
+	assert.NotNil(t, log.loadActiveSeg())
 	assert.Equal(
-		t, log.activeSegment.indexFile.file.Name(),
+		t, log.loadActiveSeg().indexFile.file.Name(),
 		path.Join(log_dir, "0.index"),
 	)
 	assert.Equal(
-		t, log.activeSegment.storeFile.file.Name(),
+		t, log.loadActiveSeg().storeFile.file.Name(),
 		path.Join(log_dir, "0.store"),
 	)
 }
