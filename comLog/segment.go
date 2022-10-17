@@ -111,8 +111,8 @@ func (seg *Segment) Append(record []byte) (uint64, int, error) {
 }
 
 func (seg *Segment) getNextOffset() uint64 {
-	seg.mu.Lock()
-	defer seg.mu.Unlock()
+	seg.mu.RLock()
+	defer seg.mu.RUnlock()
 	return seg.nextOffset
 }
 

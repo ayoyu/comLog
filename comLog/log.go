@@ -179,9 +179,10 @@ func (log *Log) segmentSearch(offset int64) *Segment {
 	var mid int
 	for left <= right {
 		mid = left + ((right - left) >> 1)
-		// TODO: this can be an issue if log.segments[mid]=activeSeg (last one)
-		// when you read the nextOffset it can be written by another append
-		if uOffset >= log.segments[mid].nextOffset {
+		// if log.segments[mid]=activeSeg (the last one mid = len(log.segments) - 1)
+		// reading the nextOffset at the same time it is incremented from another goroutine
+		// (multiple readers are allowed)
+		if uOffset >= log.segments[mid].getNextOffset() {
 			left = mid + 1
 		} else if uOffset < log.segments[mid].baseOffset {
 			right = mid - 1
