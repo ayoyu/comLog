@@ -76,7 +76,14 @@ func (seg *Segment) getIndexPath() string {
 func (seg *Segment) isFull() bool {
 	seg.mu.Lock()
 	defer seg.mu.Unlock()
-	return seg.storeFile.size >= seg.storeFile.maxBytes || seg.indexFile.size >= seg.indexFile.maxBytes
+	// To reduce missing appends:
+	// it's better to check the index full situation while adding indexWidth(=16)
+	// to not hit a lot of missing appends and wait for the store to grow with missing
+	// appends (i.e appends without indexing) to trigger the `isFull` from the store side
+	// an example: index.size=560(=16 * 35) while index.maxByte = 563, in this situation
+	// it will wait until the store.size trigger the maxed with missing appends
+	// (because this index file store fixed sequence of byte of length 16)
+	return seg.storeFile.size >= seg.storeFile.maxBytes || seg.indexFile.size+indexWidth >= seg.indexFile.maxBytes
 }
 
 func (seg *Segment) Append(record []byte) (uint64, int, error) {
