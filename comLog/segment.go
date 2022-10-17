@@ -16,6 +16,8 @@ const (
 	seg_context     = "[Segment]: "
 )
 
+var NotActiveAnymore = errors.New("Abort append, the Segment becomes old")
+
 type Segment struct {
 	mu         sync.RWMutex
 	storeFile  *store
@@ -23,6 +25,7 @@ type Segment struct {
 	baseOffset uint64 // will be set from the previous segment nextOffset
 	nextOffset uint64
 	path       string
+	isActive   bool
 }
 
 func NewSegment(segment_dir string, smaxBytes, idxMaxBytes uint64, baseOffset uint64) (*Segment, error) {
@@ -51,7 +54,7 @@ func NewSegment(segment_dir string, smaxBytes, idxMaxBytes uint64, baseOffset ui
 	if err != nil {
 		return nil, errors.Wrap(err, seg_context+"Failed to init index file")
 	}
-	// this will generate also for existing files with some size
+	// this will generalize also for existing files with some size
 	// if size=0 this will be just the baseOffset
 	nextOffset = indexFile.nbrOfIndexes() + baseOffset
 
@@ -71,12 +74,19 @@ func (seg *Segment) getIndexPath() string {
 }
 
 func (seg *Segment) isFull() bool {
-	// the lock will be at the Log level to check if it creates a new
-	// active segment
-	return seg.storeFile.size > seg.storeFile.maxBytes || seg.indexFile.size > seg.indexFile.maxBytes
+	seg.mu.Lock()
+	defer seg.mu.Unlock()
+	// To reduce missing appends:
+	// it's better to check the index full situation while adding indexWidth(=16)
+	// to not hit a lot of missing appends and wait for the store to grow with missing
+	// appends (i.e appends without indexing) to trigger the `isFull` from the store side
+	// an example: index.size=560(=16 * 35) while index.maxByte = 563, in this situation
+	// it will wait until the store.size trigger the maxed with missing appends
+	// (because this index file store fixed sequence of byte of length 16)
+	return seg.storeFile.size >= seg.storeFile.maxBytes || seg.indexFile.size+indexWidth >= seg.indexFile.maxBytes
 }
 
-func (seg *Segment) Append(record []byte) (int, error) {
+func (seg *Segment) Append(record []byte) (uint64, int, error) {
 	var (
 		err        error
 		r_position uint64
@@ -84,16 +94,32 @@ func (seg *Segment) Append(record []byte) (int, error) {
 	)
 	seg.mu.Lock()
 	defer seg.mu.Unlock()
+	if !seg.isActive {
+		return 0, 0, NotActiveAnymore
+	}
+	var curr_offset uint64 = seg.nextOffset
 	nn, r_position, err = seg.storeFile.append(record)
 	if err != nil {
-		return 0, errors.Wrap(err, seg_context+"Failed to write record in store file")
+		return 0, 0, errors.Wrap(err, seg_context+"Failed to write record in store file")
 	}
-	err = seg.indexFile.append(seg.nextOffset, r_position)
+	err = seg.indexFile.append(curr_offset, r_position)
 	if err != nil {
-		return 0, errors.Wrap(err, seg_context+"Failed to write to index file")
+		return 0, 0, errors.Wrap(err, seg_context+"Failed to write to index file")
 	}
 	seg.nextOffset++
-	return nn, nil
+	return curr_offset, nn, nil
+}
+
+func (seg *Segment) getNextOffset() uint64 {
+	seg.mu.RLock()
+	defer seg.mu.RUnlock()
+	return seg.nextOffset
+}
+
+func (seg *Segment) setIsActive(b bool) {
+	seg.mu.Lock()
+	seg.isActive = b
+	seg.mu.Unlock()
 }
 
 func (seg *Segment) Read(offset int64) (int, []byte, error) {
@@ -160,7 +186,9 @@ func (seg *Segment) ReadAt(b []byte, position uint64) (int, error) {
 		err error
 		nn  int
 	)
-	nn, err = seg.storeFile.ReadAt(b, position)
+	seg.mu.RLock()
+	defer seg.mu.RUnlock()
+	nn, err = seg.storeFile.readAt(b, position)
 	if err != nil {
 		return 0, errors.Wrap(err, seg_context+"Faild to ReadAt")
 	}
