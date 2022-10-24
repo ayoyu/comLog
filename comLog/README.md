@@ -58,3 +58,24 @@ if err != nil {
 	fmt.Println("Nbr of bytes readed: ", nn, "|| Last record: ", record)
 }
 ```
+
+### File format
+
+An example of the log data directory that contains the DATA files in a binary file format:
+
+- `.store` contains the stored records bytes
+- `.index` maintain the index to lookup for records in the store file
+
+```bash
+$ ls
+0.index  1140.index  1368.index  1596.index  1824.index  228.index  456.index  684.index  912.index
+0.store  1140.store  1368.store  1596.store  1824.store  228.store  456.store  684.store  912.store
+```
+
+```
+$ file 0.store
+0.store: data
+
+$ file 0.index
+0.index: data
+```
