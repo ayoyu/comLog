@@ -3,7 +3,7 @@
 ## The goal of the project
 
 - Implement a distributed commit log service with Golang
-- Lean a lot about database concurrency, commit log, distributed systems...etc And most important one having fun
+- Learn a lot about database concurrency, commit log, distributed systems...etc And most important one having fun 😁️
 
 ## Tasks:
 
