@@ -5,6 +5,10 @@
 - Implement a distributed commit log service with Golang
 - Learn a lot about database concurrency, commit log, distributed systems...etc And most important one having fun 😁️
 
+## Quick start
+
+#### Library Usage: [goto](comLog/README.md)
+
 ## Tasks:
 
 - [x] Write the commit log library (package)
