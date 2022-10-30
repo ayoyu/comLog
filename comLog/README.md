@@ -64,7 +64,7 @@ if err != nil {
 An example of the log data directory that contains the DATA files in a binary file format:
 
 - `.store` contains the stored records bytes
-- `.index` maintain the index to lookup for records in the store file
+- `.index` maintains the index to lookup for records in the store file
 
 ```bash
 $ ls
