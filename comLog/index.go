@@ -96,6 +96,7 @@ func (idx *index) close() error {
 	return idx.file.Close()
 }
 
+// Returns the Name of the index file
 func (idx *index) Name() string {
 	return idx.file.Name()
 }

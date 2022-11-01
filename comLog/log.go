@@ -14,6 +14,14 @@ var ConfigError = errors.New("Configuration error")
 var LogOutOfRange = errors.New("No record exists with this offset")
 var LogNotImplemented = errors.New("Not Supported")
 
+/*
+Log configuration
+
+	:attr: Data_dir: file system directory where the physical store and index files will be stored
+	:attr: NbrOfSegments: (Optional) Number of segments in the existing log data directory (from a second setup)
+	:attr: StoreMaxBytes: max bytes to store in the store-file
+	:attr: IndexMaxBytes: max bytes to store in the index-file
+*/
 type Config struct {
 	Data_dir      string
 	NbrOfSegments int
@@ -21,6 +29,8 @@ type Config struct {
 	IndexMaxBytes uint64
 }
 
+// The Log struct that holds the list of used segments and maintain the reference
+// to the active segment
 type Log struct {
 	Config
 	mu             sync.RWMutex
@@ -28,6 +38,7 @@ type Log struct {
 	vactiveSegment atomic.Value
 }
 
+// Init a new Log instance from the configuration
 func NewLog(conf Config) (*Log, error) {
 	if conf.Data_dir == "" {
 		return nil, ConfigError
@@ -43,6 +54,7 @@ func NewLog(conf Config) (*Log, error) {
 	return log, nil
 }
 
+// Setup the log for the first time or from an existing data directory
 func (log *Log) setup() error {
 	var (
 		err     error
@@ -105,10 +117,12 @@ func (log *Log) setup() error {
 	return nil
 }
 
+// Get the active segment
 func (log *Log) loadActiveSeg() *Segment {
 	return log.vactiveSegment.Load().(*Segment)
 }
 
+// Create a new active segment when spliting
 func (log *Log) createNewActiveSeg() error {
 	var oldSegment *Segment = log.loadActiveSeg()
 	oldSegment.setIsActive(false)
@@ -125,10 +139,13 @@ func (log *Log) createNewActiveSeg() error {
 	return nil
 }
 
+// Check if the segment is Full from the index and store files
 func (log *Log) splitForNewActiveSeg() bool {
 	return log.loadActiveSeg().isFull()
 }
 
+// Append a record to the log. It returns the offset, the number of bytes written
+// and an error if any
 func (log *Log) Append(record []byte) (uint64, int, error) {
 	// to ensure split correctness
 	log.mu.Lock()
@@ -148,9 +165,9 @@ func (log *Log) Append(record []byte) (uint64, int, error) {
 	// Delayed append can happen from a routine that was not able to acquire
 	// the activeSegment lock, and so when this happen (lock is acquired) probably
 	// the segment that the routine is referencing from previous `loadActiveSeg`
-	// is not anymore the active segment (i.e. `log.vactiveSegment.Store` of active segement happenned)
+	// is not anymore the active segment (i.e. `log.vactiveSegment.Store` of active segement happened)
 	// that's why we should retry in this case to **re-load** the active segment.
-	// This behavior occur during the split segment, because we don't lock the whole append with log mutex
+	// This behavior occurs during the split segment, because we don't lock the whole append with log mutex
 	for {
 		// retry
 		offset, nn, err = log.loadActiveSeg().Append(record)
@@ -164,6 +181,7 @@ func (log *Log) Append(record []byte) (uint64, int, error) {
 	return offset, nn, nil
 }
 
+// Search for the corresponding segment given the offset
 func (log *Log) segmentSearch(offset int64) *Segment {
 	// to protect log.segements slice
 	log.mu.RLock()
@@ -180,8 +198,11 @@ func (log *Log) segmentSearch(offset int64) *Segment {
 	for left <= right {
 		mid = left + ((right - left) >> 1)
 		// if log.segments[mid]=activeSeg (the last one mid = len(log.segments) - 1)
-		// reading the nextOffset at the same time it is incremented from another goroutine
+		// reading the nextOffset at the same time while it's incremented from another goroutine
 		// (multiple readers are allowed)
+		// TODO: check if the mid is pointing to the activeSeg or not.
+		// if not we can read without worying about locking (the Lock implementation in go in this case will CAS
+		// and go with the "fast path", so it's worth it to put an If statement instead of executing the CAS operation)
 		if uOffset >= log.segments[mid].getNextOffset() {
 			left = mid + 1
 		} else if uOffset < log.segments[mid].baseOffset {
@@ -193,6 +214,8 @@ func (log *Log) segmentSearch(offset int64) *Segment {
 	return nil
 }
 
+// Read the record corresponding to the given offset. It returns the corresponding record
+// the number of bytes read and an error if any
 func (log *Log) Read(offset int64) (int, []byte, error) {
 	if offset < -1 {
 		return 0, nil, LogNotImplemented
@@ -213,9 +236,8 @@ func (log *Log) Read(offset int64) (int, []byte, error) {
 	return nn, record, nil
 }
 
+// Close the Log. It will close all segemnts it was able to close until an error occur or not.
 func (log *Log) Close() error {
-	// will close all segemnts it was able to close until an error
-	// occur or not
 	log.mu.Lock()
 	defer log.mu.Unlock()
 	var err error
@@ -228,9 +250,8 @@ func (log *Log) Close() error {
 	return nil
 }
 
+// Remove the Log. It will remove all segements it was able to remove until an error occur or not
 func (log *Log) Remove() error {
-	// will remove all segements it was able to remove until an error
-	// occur or not
 	log.mu.Lock()
 	defer log.mu.Unlock()
 	var err error

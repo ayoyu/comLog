@@ -18,6 +18,8 @@ const (
 
 var NotActiveAnymore = errors.New("Abort append, the Segment becomes old")
 
+// The Segment structure that holds the pair index-store files.
+// It maintains the base Offset and keep track of the next Offset
 type Segment struct {
 	mu         sync.RWMutex
 	storeFile  *store
@@ -28,7 +30,15 @@ type Segment struct {
 	isActive   bool
 }
 
-func NewSegment(segment_dir string, smaxBytes, idxMaxBytes uint64, baseOffset uint64) (*Segment, error) {
+/*
+Init a new segment (store and index files)
+
+	:param: dir: file system directory where the physical store and index files will be stored
+	:param: smaxBytes: max bytes to store in the store-file
+	:param: idxMaxBytes: max bytes to store in the index-file
+	:param: baseOffset: the start indexing offset
+*/
+func NewSegment(dir string, smaxBytes, idxMaxBytes uint64, baseOffset uint64) (*Segment, error) {
 	var (
 		err        error
 		storeFile  *store
@@ -37,7 +47,7 @@ func NewSegment(segment_dir string, smaxBytes, idxMaxBytes uint64, baseOffset ui
 		idxfile    *os.File
 		nextOffset uint64
 	)
-	var newSeg *Segment = &Segment{baseOffset: baseOffset, path: segment_dir}
+	var newSeg *Segment = &Segment{baseOffset: baseOffset, path: dir}
 	sfile, err = os.OpenFile(newSeg.getStorePath(), os.O_CREATE|os.O_APPEND|os.O_RDWR, 0666)
 	if err != nil {
 		return nil, errors.Wrap(err, seg_context+"Failed to openFile store file")
@@ -73,6 +83,7 @@ func (seg *Segment) getIndexPath() string {
 	return filepath.Join(seg.path, fmt.Sprintf(fileFormat, seg.baseOffset, indexFileSuffix))
 }
 
+// check if segment is full
 func (seg *Segment) isFull() bool {
 	seg.mu.Lock()
 	defer seg.mu.Unlock()
@@ -82,10 +93,12 @@ func (seg *Segment) isFull() bool {
 	// appends (i.e appends without indexing) to trigger the `isFull` from the store side
 	// an example: index.size=560(=16 * 35) while index.maxByte = 563, in this situation
 	// it will wait until the store.size trigger the maxed with missing appends
-	// (because this index file store fixed sequence of byte of length 16)
+	// (the index file contains fixed sequence of byte of length 16)
 	return seg.storeFile.size >= seg.storeFile.maxBytes || seg.indexFile.size+indexWidth >= seg.indexFile.maxBytes
 }
 
+// Append a new record to the segment.
+// It returns the offset, number of bytes written and an error if any
 func (seg *Segment) Append(record []byte) (uint64, int, error) {
 	var (
 		err        error
@@ -122,6 +135,8 @@ func (seg *Segment) setIsActive(b bool) {
 	seg.mu.Unlock()
 }
 
+// Get record corresponding to the given offset.
+// It returns the number of bytes read, the record and an error if any
 func (seg *Segment) Read(offset int64) (int, []byte, error) {
 	var (
 		err          error
@@ -149,6 +164,7 @@ func (seg *Segment) Read(offset int64) (int, []byte, error) {
 	return nn, record, nil
 }
 
+// Close the segment by closing the store and index files
 func (seg *Segment) Close() error {
 	seg.mu.Lock()
 	defer seg.mu.Unlock()
@@ -164,6 +180,7 @@ func (seg *Segment) Close() error {
 	return nil
 }
 
+// Remove the segment by removing the store and index files
 func (seg *Segment) Remove() error {
 	var err error
 	err = seg.Close()
@@ -181,6 +198,7 @@ func (seg *Segment) Remove() error {
 	return nil
 }
 
+// Read at the corresponding position in the store file linked to the segment
 func (seg *Segment) ReadAt(b []byte, position uint64) (int, error) {
 	var (
 		err error
