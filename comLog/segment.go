@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
+	"github.com/tysonmote/gommap"
 )
 
 const (
@@ -162,6 +163,24 @@ func (seg *Segment) Read(offset int64) (int, []byte, error) {
 		return 0, nil, errors.Wrap(err, seg_context+"Failed to get record from store file")
 	}
 	return nn, record, nil
+}
+
+// Explicit Commit to flush back the store buffer to disk and Sync asynchronously
+// the index mmap region with the underlying file
+func (seg *Segment) Flush() error {
+	seg.mu.Lock()
+	defer seg.mu.Unlock()
+	var err error
+	err = seg.storeFile.writeBuf.Flush()
+	if err != nil {
+		return errors.Wrap(err, seg_context+"Failed to flush the store buffer")
+	}
+	// async flushing (scheduled) for the index not similar to `close`
+	err = seg.indexFile.mmap.Sync(gommap.MS_ASYNC)
+	if err != nil {
+		return errors.Wrap(err, seg_context+"Failed to sync the index mmap")
+	}
+	return nil
 }
 
 // Close the segment by closing the store and index files
