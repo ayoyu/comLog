@@ -56,6 +56,7 @@ func (st *store) read(position uint64) (int, []byte, error) {
 	var fetch_position int64 = int64(position)
 	// https://cs.opensource.google/go/go/+/refs/tags/go1.19.1:src/bufio/bufio.go;l=626;drc=54182ff54a687272dd7632c3a963e036ce03cb7c
 	// When you flush the buffer if buf.n == 0 we return from the method -> nothing new to flush
+	// Implicit flush to the store buf
 	st.mu.Lock()
 	if err := st.writeBuf.Flush(); err != nil {
 		st.mu.Unlock()

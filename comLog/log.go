@@ -34,8 +34,8 @@ type Config struct {
 type Log struct {
 	Config
 	mu             sync.RWMutex
-	segments       []*Segment
-	vactiveSegment atomic.Value
+	segments       []*Segment   // TODO(storage): garbage collection based on checkpoint
+	vactiveSegment atomic.Value // TODO(performance): check atomic Pointer
 }
 
 // Init a new Log instance from the configuration
@@ -126,8 +126,12 @@ func (log *Log) loadActiveSeg() *Segment {
 func (log *Log) createNewActiveSeg() error {
 	var oldSegment *Segment = log.loadActiveSeg()
 	oldSegment.setIsActive(false)
+	// Implicit flush for the old segment
+	var err error = oldSegment.Flush()
+	if err != nil {
+		return err
+	}
 	var nextBaseOffset uint64 = oldSegment.getNextOffset()
-	var err error
 	var newActiveSeg *Segment
 	newActiveSeg, err = NewSegment(log.Data_dir, log.StoreMaxBytes, log.IndexMaxBytes, nextBaseOffset)
 	if err != nil {
@@ -234,6 +238,11 @@ func (log *Log) Read(offset int64) (int, []byte, error) {
 		return 0, nil, err
 	}
 	return nn, record, nil
+}
+
+// Explicit Flush/Commit to the log, it touches the active segment
+func (log *Log) Flush() error {
+	return log.loadActiveSeg().Flush()
 }
 
 // Close the Log. It will close all segemnts it was able to close until an error occur or not.

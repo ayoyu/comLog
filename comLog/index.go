@@ -61,8 +61,6 @@ func (idx *index) append(offset, position uint64) error {
 
 func (idx *index) read(offset int64) (uint64, error) {
 	var pos uint64
-	// TODO support not just lastEntry=-1 but also reading from -2, -3,... indexes
-	// similar to what python do for example with the `list`
 	if offset == -1 {
 		// last entry
 		pos = idx.size - indexWidth

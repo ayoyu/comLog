@@ -36,8 +36,8 @@ func randomRecord(n int) []byte {
 	return record
 }
 
-func LogMixAppendAndRead() error {
-	// The read will be at the end
+func LogMixAppendReadWorkLoad(verbose bool) error {
+	//  Append and Read are Concurrnents (Mix mode)
 	log_dir, err := os.MkdirTemp("", "test_bench")
 	fmt.Println("Log_dir: ", log_dir)
 	if err != nil {
@@ -59,7 +59,9 @@ func LogMixAppendAndRead() error {
 			record := randomRecord(10)
 			offset, _, err := log.Append(record)
 			if err != nil {
-				fmt.Println("???????????????????????? Append Error: ", err)
+				if verbose {
+					fmt.Println("???????????????????????? Append Error: ", err)
+				}
 				res <- TestLogData{record: string(record), offset: 0, err: err}
 			} else {
 				res <- TestLogData{record: string(record), offset: offset, err: nil}
@@ -73,21 +75,29 @@ func LogMixAppendAndRead() error {
 			AppendTestLogData := <-res
 			if AppendTestLogData.err != nil {
 				// this is an OK case
-				fmt.Println("OK CASE ???????????????????????? Cannot Read because the append returned an error")
+				if verbose {
+					fmt.Println("OK CASE ???????????????????????? Cannot Read because the append returned an error")
+				}
 				return
 			}
 			_, record, err := log.Read(int64(AppendTestLogData.offset))
 			if err != nil {
 				// not an OK case -> stop to check
-				fmt.Println("???????????????????????? Read Error: ", err)
+				if verbose {
+					fmt.Println("???????????????????????? Read Error: ", err)
+				}
 				return
 			}
 			if string(record) != AppendTestLogData.record {
 				// corrupted data case coming from data race
-				fmt.Println("<!><!><!><!><!><!><!><!><!><!><!> Appended-record: ", AppendTestLogData.record, " != Read-record", string(record))
+				if verbose {
+					fmt.Println("########## Corrupted Data Error ############## Appended-record: ", AppendTestLogData.record, " != Read-record", string(record))
+				}
 				return
 			}
-			fmt.Println("Succeed: Offset=", AppendTestLogData.offset, "Append-record: ", AppendTestLogData.record, " == Read-record", string(record))
+			if verbose {
+				fmt.Println("Succeed: Offset=", AppendTestLogData.offset, "Append-record: ", AppendTestLogData.record, " == Read-record", string(record))
+			}
 
 		}()
 	}
@@ -96,8 +106,9 @@ func LogMixAppendAndRead() error {
 	return nil
 }
 
-func LogAppend() error {
-	// The read will be at the end
+func LogAppendWorkLoad(verbose bool) error {
+	// Append and Flush are Concurrnents
+	// The read will be at the end in sync mode to check results
 	log_dir, err := os.MkdirTemp("", "test_bench")
 	fmt.Println("Log_dir: ", log_dir)
 	if err != nil {
@@ -108,17 +119,30 @@ func LogAppend() error {
 	if err != nil {
 		return err
 	}
-	Size := 2000
+	Size := 5000
 	var res chan TestLogData = make(chan TestLogData, Size)
 	var wait sync.WaitGroup
 	for i := 0; i < Size; i++ {
+		if i%100 == 0 {
+			// make periodic explicit flush of the log
+			wait.Add(1)
+			go func() {
+				err := log.Flush()
+				if err != nil && verbose {
+					fmt.Println("???????????????????????? Log Flush/Commit error", err)
+				}
+				wait.Done()
+			}()
+		}
 		wait.Add(1)
 		go func() {
 			// Append
 			record := randomRecord(10)
 			offset, _, err := log.Append(record)
 			if err != nil {
-				fmt.Println("???????????????????????? Append Error: ", err)
+				if verbose {
+					fmt.Println("???????????????????????? Append Error: ", err)
+				}
 				res <- TestLogData{record: string(record), offset: 0, err: err}
 			} else {
 				res <- TestLogData{record: string(record), offset: offset, err: nil}
@@ -130,31 +154,43 @@ func LogAppend() error {
 	wait.Wait()
 	// Read back appended records
 	fmt.Println()
-	fmt.Println("Results: ")
+	if verbose {
+		fmt.Println("Results: ")
+	}
 	var arr []TestLogData_2
 	for i := 0; i < Size; i++ {
 		t := <-res
 		if t.err != nil {
-			fmt.Println("????????????????????????? Error occur during Append", t.err, "...continue")
+			if verbose {
+				fmt.Println("????????????????????????? Error occur during Append", t.err, "...continue")
+			}
 			continue
 		}
 		_, rr, err := log.Read(int64(t.offset))
 		if err != nil {
-			fmt.Println("???????????????????????? Error Reading: ", err)
+			if verbose {
+				fmt.Println("???????????????????????? Error Reading: ", err)
+			}
 			return err
 		}
 		if string(rr) != t.record {
 			// the most critical error
-			fmt.Println("<!><!><!><!><!><!><!><!><!><!><!> Found Incorrect data")
-			fmt.Println("Read offset: ", t.offset, "record readed back: ", string(rr), "!= stored record (Append): ", t.record)
+			if verbose {
+				fmt.Println("<!><!><!><!><!><!><!><!><!><!><!> Found Incorrect data")
+				fmt.Println("Read offset: ", t.offset, "record readed back: ", string(rr), "!= stored record (Append): ", t.record)
+			}
 			return nil
 		}
-		fmt.Println("Read offset: ", t.offset, "record readed back: ", string(rr), "== stored record (Append): ", t.record)
+		if verbose {
+			fmt.Println("Read offset: ", t.offset, "record readed back: ", string(rr), "== stored record (Append): ", t.record)
+		}
 		arr = append(arr, TestLogData_2{original: string(t.record), record_back: string(rr), offset: t.offset})
 	}
 	err = log.Close()
 	if err != nil {
-		fmt.Println("???????????????????????? Error Close: ", err)
+		if verbose {
+			fmt.Println("???????????????????????? Error Close: ", err)
+		}
 		return err
 	}
 	// Second Setup: setup Again from log_dir
@@ -166,21 +202,27 @@ func LogAppend() error {
 	for _, second := range arr {
 		_, r2, err := log2.Read(int64(second.offset))
 		if err != nil {
-			fmt.Println("???????????????????????? (Second Time) Error Reading : ", err)
+			if verbose {
+				fmt.Println("???????????????????????? (Second Time) Error Reading : ", err)
+			}
 			return err
 		}
 		if string(r2) != second.original || string(r2) != second.record_back {
-			fmt.Println("<!><!><!><!><!><!><!><!><!><!><!>  (Second Time) Found Incorrect data")
-			fmt.Println("Read 2 offset: ", second.offset, "record_back_2: ", string(r2), "record_back: ", second.record_back, "original: ", second.original)
+			if verbose {
+				fmt.Println("<!><!><!><!><!><!><!><!><!><!><!>  (Second Time) Found Incorrect data")
+				fmt.Println("Read 2 offset: ", second.offset, "record_back_2: ", string(r2), "record_back: ", second.record_back, "original: ", second.original)
+			}
 			return nil
 		}
-		fmt.Println("(Second Time) offset: ", second.offset, "record_back2: ", string(r2), "record_back: ", second.record_back, "original: ", second.original)
+		if verbose {
+			fmt.Println("(Second Time) offset: ", second.offset, "record_back2: ", string(r2), "record_back: ", second.record_back, "original: ", second.original)
+		}
 	}
 	os.RemoveAll(log_dir)
 	return nil
 }
 
 func main() {
-	LogAppend()
-	//LogMixAppendAndRead()
+	LogAppendWorkLoad(true)
+	// LogMixAppendReadWorkLoad(true)
 }
