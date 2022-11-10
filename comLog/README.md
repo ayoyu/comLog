@@ -4,7 +4,7 @@
 
 #### Append a record
 
-- Example:
+- Append the record `[]byte("Hello World")` and receive the `offset: uint64` of the record, or also what is called the log sequence number (LSN) https://pgpedia.info/l/LSN-log-sequence-number.html in the WAL databases terminology https://pgpedia.info/w/wal-write-ahead-logging.html
 
 ```golang
 package main
@@ -15,49 +15,84 @@ import (
 	"github.com/ayoyu/comLog/comLog"
 )
 
-const log_dir = "/name_of_directory/"
-const StoreMaxBytes uint64 = 4096
-const IndexMaxBytes uint64 = 4096
+const log_dir string = "/The_name_of_data_log_directory/"
+const StoreMaxBytes_ uint64 = 4096
+const IndexMaxBytes_ uint64 = 4096
 
 func main() {
-	conf := comLog.Config{Data_dir: log_dir, StoreMaxBytes: StoreMaxBytes, IndexMaxBytes: IndexMaxBytes}
-	log, err := comLog.NewLog(conf)
+	var conf comLog.Config = comLog.Config{Data_dir: log_dir, StoreMaxBytes: StoreMaxBytes_, IndexMaxBytes: IndexMaxBytes_}
+	var (
+		err error
+		log *comLog.Log
+	)
+	log, err = comLog.NewLog(conf)
 	if err != nil {
 		panic("Error during log setup")
 	}
-	offset, nn, err := log.Append([]byte("Hello World"))
+	var (
+		offset uint64
+		nn     int
+	)
+	offset, nn, err = log.Append([]byte("Hello World"))
 	if err != nil {
-		fmt.Errorf("Append Error %w", err)
+		fmt.Println("Append Error %w", err)
 	} else {
 		fmt.Println("Nbr of bytes written: ", nn, "|| offset: ", offset)
 	}
 }
 ```
 
+#### Explicit Flush/Commit
+
+- Flush the log buffers (index and store) of the active segment. The index mmap region will be synchronized asynchronously with the underlying file.
+
+```golang
+var err error = log.Flush()
+if err != nil {
+	fmt.Println("Error Flushing the log", err)
+}
+```
+
 #### Read a record:
 
-- Example 1: (offset from above example)
+- Example 1: (the offset from above example)
+
+Read back the bytes record given its offset.
 
 ```golang
 // the offset from the append example
-nn, record, err := log.Read(int64(offset))
+var (
+	record []byte
+	err error
+	nn int
+)
+nn, record, err = log.Read(int64(offset))
 if err != nil {
-	fmt.Errorf("Read Error %w", err)
+	fmt.Println("Read Error", err)
 } else {
 	fmt.Println("Nbr of bytes readed: ", nn, "|| record: ", record)
 }
 ```
 
-- Example 2: (Read the last written record)
+- Example 2:
+
+Read the last record written at a certain time.
 
 ```golang
-nn, record, err := log.Read(-1)
+var (
+	record []byte
+	err error
+	nn int
+)
+nn, record, err = log.Read(-1)
 if err != nil {
 	fmt.Errorf("Read Error %w", err)
 } else {
 	fmt.Println("Nbr of bytes readed: ", nn, "|| Last record: ", record)
 }
 ```
+
+Note: The read operation will make an implicit flush operation of the records buffer, before reading.
 
 ### File format
 
