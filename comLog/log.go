@@ -21,6 +21,13 @@ Log configuration
 	:attr: NbrOfSegments: (Optional) Number of segments in the existing log data directory (from a second setup)
 	:attr: StoreMaxBytes: max bytes to store in the store-file
 	:attr: IndexMaxBytes: max bytes to store in the index-file
+
+Be aware that the OS have a limit called "the Operating System File Descriptor Limit" that will constrain
+the maximum number of file descriptors the process has. "Too many open files error" can happen when a process needs
+to open more files than the operating system allows, this limits can constrain how many concurrent requests the server
+can handle. Practically in order to avoid this behavior, you must think of a reasonable `StoreMaxBytes` capacity based
+on the nature of the records you are appending, and also have a background/scheduled thread to run `CollectSegmentsGarbage`
+in order to truncate the the Log based on some offset. Increasing the operating system file descriptor limit can also be an option.
 */
 type Config struct {
 	Data_dir      string
@@ -35,7 +42,7 @@ type Log struct {
 	Config
 	mu             sync.RWMutex
 	segments       []*Segment   // TODO(storage): garbage collection based on checkpoint
-	vactiveSegment atomic.Value // TODO(performance): check atomic Pointer
+	vactiveSegment atomic.Value // TODO(performance): check atomic Pointer (*: Store is a bit faster but the Load is not)
 }
 
 // Init a new Log instance from the configuration
@@ -190,9 +197,10 @@ func (log *Log) segmentSearch(offset int64) *Segment {
 	// to protect log.segements slice
 	log.mu.RLock()
 	defer log.mu.RUnlock()
+	var currSize int = len(log.segments) - 1
 	if offset == -1 {
 		// last entry -> last segment + last record in the last segment
-		return log.segments[len(log.segments)-1]
+		return log.segments[currSize]
 	}
 	var uOffset uint64 = uint64(offset)
 	// binary search
@@ -201,13 +209,15 @@ func (log *Log) segmentSearch(offset int64) *Segment {
 	var mid int
 	for left <= right {
 		mid = left + ((right - left) >> 1)
-		// if log.segments[mid]=activeSeg (the last one mid = len(log.segments) - 1)
-		// reading the nextOffset at the same time while it's incremented from another goroutine
-		// (multiple readers are allowed)
-		// TODO: check if the mid is pointing to the activeSeg or not.
-		// if not we can read without worying about locking (the Lock implementation in go in this case will CAS
-		// and go with the "fast path", so it's worth it to put an If statement instead of executing the CAS operation)
-		if uOffset >= log.segments[mid].getNextOffset() {
+		// check if the mid is pointing to the activeSeg or not. if not we can read without worying
+		// about locking (the Lock implementation in go in this case will CAS and go with the "fast path"
+		var nextOffset uint64
+		if mid == currSize {
+			nextOffset = log.segments[mid].getNextOffset()
+		} else {
+			nextOffset = log.segments[mid].nextOffset
+		}
+		if uOffset >= nextOffset {
 			left = mid + 1
 		} else if uOffset < log.segments[mid].baseOffset {
 			right = mid - 1
@@ -270,5 +280,10 @@ func (log *Log) Remove() error {
 			return err
 		}
 	}
+	return nil
+}
+
+func (log *Log) CollectSegmentsGarbage(offset uint64) error {
+	// TODO
 	return nil
 }

@@ -39,6 +39,12 @@ func main() {
 	} else {
 		fmt.Println("Nbr of bytes written: ", nn, "|| offset: ", offset)
 	}
+	offset, nn, err = log.Append(
+		[]byte(`{
+			"name": "value",
+			"type": "record",
+			"fields": [{"name": "user_id","type": "int"},{"name": "gender","type": "string"}]
+		}`))
 }
 ```
 
