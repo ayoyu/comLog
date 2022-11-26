@@ -1,9 +1,10 @@
-package logbench
+package benchmarks
 
 import (
 	"math/rand"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/ayoyu/comLog/comLog"
 )
@@ -11,6 +12,7 @@ import (
 const StoreMaxBytes uint64 = 65536
 const IndexMaxBytes uint64 = 65536
 const letters string = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+const countItems int = 8000
 
 type TestRecord struct {
 	Content []byte
@@ -23,6 +25,44 @@ func randomRecord(n int) []byte {
 		record[i] = letters[rand.Int63()%int64(len(letters))]
 	}
 	return record
+}
+
+func BenchmarkLog_ReadOnly_After_Bulk_Writes(b *testing.B) {
+	log_dir, err := os.MkdirTemp("", "test_bench")
+	if err != nil {
+		b.Error(err)
+	}
+	var conf comLog.Config = comLog.Config{Data_dir: log_dir, StoreMaxBytes: StoreMaxBytes, IndexMaxBytes: IndexMaxBytes}
+	log, err := comLog.NewLog(conf)
+	if err != nil {
+		b.Error(err)
+	}
+	var offsets []int64 = make([]int64, countItems)
+	for i := 0; i < countItems; i++ {
+		offset, _, err := log.Append(randomRecord(10))
+		if err != nil {
+			b.Error(err)
+		}
+		offsets[i] = int64(offset)
+	}
+	rand.Seed(time.Now().UnixNano())
+	// to read for a random segment (i.e not necessarily from increasing offsets)
+	rand.Shuffle(countItems, func(i, j int) {
+		offsets[i], offsets[j] = offsets[j], offsets[i]
+	})
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		var i int = 0
+		for pb.Next() {
+			_, _, err := log.Read(offsets[i%countItems])
+			if err != nil {
+				b.Error(err)
+			}
+			i++
+		}
+	})
+	log.Close()
+	os.RemoveAll(log_dir)
 }
 
 func Log_Write_WorkLoad_Record_Length(b *testing.B, length int) {
@@ -45,6 +85,7 @@ func Log_Write_WorkLoad_Record_Length(b *testing.B, length int) {
 			}
 		}
 	})
+	log.Close()
 	os.RemoveAll(log_dir)
 }
 
@@ -72,6 +113,7 @@ func Log_Write_Read_WorkLoad_Record_Length(b *testing.B, length int) {
 			}
 		}
 	})
+	log.Close()
 	os.RemoveAll(log_dir)
 }
 

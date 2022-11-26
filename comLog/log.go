@@ -197,9 +197,10 @@ func (log *Log) segmentSearch(offset int64) *Segment {
 	// to protect log.segements slice
 	log.mu.RLock()
 	defer log.mu.RUnlock()
+	var currSize int = len(log.segments) - 1
 	if offset == -1 {
 		// last entry -> last segment + last record in the last segment
-		return log.segments[len(log.segments)-1]
+		return log.segments[currSize]
 	}
 	var uOffset uint64 = uint64(offset)
 	// binary search
@@ -208,13 +209,15 @@ func (log *Log) segmentSearch(offset int64) *Segment {
 	var mid int
 	for left <= right {
 		mid = left + ((right - left) >> 1)
-		// if log.segments[mid]=activeSeg (the last one mid = len(log.segments) - 1)
-		// reading the nextOffset at the same time while it's incremented from another goroutine
-		// (multiple readers are allowed)
-		// TODO: check if the mid is pointing to the activeSeg or not.
-		// if not we can read without worying about locking (the Lock implementation in go in this case will CAS
-		// and go with the "fast path", so it's worth it to put an If statement instead of executing the CAS operation)
-		if uOffset >= log.segments[mid].getNextOffset() {
+		// check if the mid is pointing to the activeSeg or not. if not we can read without worying
+		// about locking (the Lock implementation in go in this case will CAS and go with the "fast path"
+		var nextOffset uint64
+		if mid == currSize {
+			nextOffset = log.segments[mid].getNextOffset()
+		} else {
+			nextOffset = log.segments[mid].nextOffset
+		}
+		if uOffset >= nextOffset {
 			left = mid + 1
 		} else if uOffset < log.segments[mid].baseOffset {
 			right = mid - 1
