@@ -25,17 +25,18 @@ What is a commitLog ? some resources to check out if you are curious:
 ## Benchmarks
 
 ```Shell
-$ go test -benchmem -run=^$ -bench .
+$ cd benchmarks/ && go test -benchmem -run=^$ -bench .
 goos: linux
 goarch: amd64
 pkg: github.com/ayoyu/comLog/benchmarks
 cpu: Intel(R) Core(TM) i5-9300H CPU @ 2.40GHz
-BenchmarkLog_Write_WorkLoad_For_Record_Length_10-8     	 1344366	       882.9 ns/op	      26 B/op	       1 allocs/op
-BenchmarkLog_Write_WorkLoad_For_Record_Length_50-8     	  976520	      1165 ns/op	      67 B/op	       1 allocs/op
-BenchmarkLog_Write_WorkLoad_For_Record_Length_200-8    	  607878	      2149 ns/op	     219 B/op	       1 allocs/op
-BenchmarkLog_Write_Read_WorkLoad_Record_Length_10-8    	   93140	     12611 ns/op	      42 B/op	       2 allocs/op
-BenchmarkLog_Write_Read_WorkLoad_Record_Length_50-8    	   89199	     12459 ns/op	     130 B/op	       2 allocs/op
-BenchmarkLog_Write_Read_WorkLoad_Record_Length_200-8   	   84942	     14321 ns/op	     427 B/op	       2 allocs/op
+BenchmarkLog_ReadOnly_After_Bulk_Writes-8              	 3936056	       300.5 ns/op	      16 B/op	       1 allocs/op
+BenchmarkLog_Write_WorkLoad_For_Record_Length_10-8     	 1000000	      1632 ns/op	      26 B/op	       1 allocs/op
+BenchmarkLog_Write_WorkLoad_For_Record_Length_50-8     	  345273	      3197 ns/op	      67 B/op	       1 allocs/op
+BenchmarkLog_Write_WorkLoad_For_Record_Length_200-8    	  131122	      9027 ns/op	     219 B/op	       1 allocs/op
+BenchmarkLog_Write_Read_WorkLoad_Record_Length_10-8    	   72444	     15474 ns/op	      41 B/op	       2 allocs/op
+BenchmarkLog_Write_Read_WorkLoad_Record_Length_50-8    	   65324	     19598 ns/op	     130 B/op	       2 allocs/op
+BenchmarkLog_Write_Read_WorkLoad_Record_Length_200-8   	   47949	     23957 ns/op	     427 B/op	       2 allocs/op
 PASS
-ok  	github.com/ayoyu/comLog/benchmarks	10.572s
+ok  	github.com/ayoyu/comLog/benchmarks	10.893s
 ```
