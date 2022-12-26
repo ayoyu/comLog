@@ -134,7 +134,7 @@ func (log *Log) createNewActiveSeg() error {
 	var oldSegment *Segment = log.loadActiveSeg()
 	oldSegment.setIsActive(false)
 	// Implicit flush for the old segment
-	var err error = oldSegment.Flush()
+	var err error = oldSegment.Flush(IndexMMAP_ASYNC)
 	if err != nil {
 		return err
 	}
@@ -250,9 +250,10 @@ func (log *Log) Read(offset int64) (int, []byte, error) {
 	return nn, record, nil
 }
 
-// Explicit Flush/Commit to the log, it touches the active segment
-func (log *Log) Flush() error {
-	return log.loadActiveSeg().Flush()
+// Explicit Flush/Commit the log. It touches only the active segment.
+// The index file mmap linked to the active segment can be flushed synchronously or asynchronously
+func (log *Log) Flush(indexMMAP_Sync IndexSync) error {
+	return log.loadActiveSeg().Flush(indexMMAP_Sync)
 }
 
 // Close the Log. It will close all segemnts it was able to close until an error occur or not.

@@ -127,7 +127,7 @@ func LogAppendWorkLoad(verbose bool) error {
 			// make periodic explicit flush of the log
 			wait.Add(1)
 			go func() {
-				err := log.Flush()
+				err := log.Flush(comLog.IndexMMAP_SYNC)
 				if err != nil && verbose {
 					fmt.Println("???????????????????????? Log Flush/Commit error", err)
 				}
