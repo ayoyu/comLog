@@ -17,6 +17,13 @@ const (
 	seg_context     = "[Segment]: "
 )
 
+type IndexSync uint8
+
+const (
+	IndexMMAP_SYNC IndexSync = iota
+	IndexMMAP_ASYNC
+)
+
 var NotActiveAnymore = errors.New("Abort append, the Segment becomes old")
 
 // The Segment structure that holds the pair index-store files.
@@ -165,9 +172,9 @@ func (seg *Segment) Read(offset int64) (int, []byte, error) {
 	return nn, record, nil
 }
 
-// Explicit Commit to flush back the store buffer to disk and Sync asynchronously
-// the index mmap region with the underlying file
-func (seg *Segment) Flush() error {
+// Explicit Commit to flush back the store buffer to disk and Sync synchronously or asynchronously
+// the index mmap region with the underlying file.
+func (seg *Segment) Flush(indexMMAPSync IndexSync) error {
 	seg.mu.Lock()
 	defer seg.mu.Unlock()
 	var err error
@@ -175,10 +182,14 @@ func (seg *Segment) Flush() error {
 	if err != nil {
 		return errors.Wrap(err, seg_context+"Failed to flush the store buffer")
 	}
-	// async flushing (scheduled) for the index not similar to `close`
-	err = seg.indexFile.mmap.Sync(gommap.MS_ASYNC)
+	switch indexMMAPSync {
+	case IndexMMAP_ASYNC:
+		err = seg.indexFile.mmap.Sync(gommap.MS_ASYNC)
+	case IndexMMAP_SYNC:
+		err = seg.indexFile.mmap.Sync(gommap.MS_SYNC)
+	}
 	if err != nil {
-		return errors.Wrap(err, seg_context+"Failed to sync the index mmap")
+		return errors.Wrap(err, seg_context+"Failed to Sync the index mmap")
 	}
 	return nil
 }
