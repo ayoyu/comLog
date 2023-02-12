@@ -14,25 +14,20 @@ var ConfigError = errors.New("Configuration error")
 var LogOutOfRange = errors.New("No record exists with this offset")
 var LogNotImplemented = errors.New("Not Supported")
 
-/*
-Log configuration
-
-	:attr: Data_dir: file system directory where the physical store and index files will be stored
-	:attr: NbrOfSegments: (Optional) Number of segments in the existing log data directory (from a second setup)
-	:attr: StoreMaxBytes: max bytes to store in the store-file
-	:attr: IndexMaxBytes: max bytes to store in the index-file
-
-Be aware that the OS have a limit called "the Operating System File Descriptor Limit" that will constrain
-the maximum number of file descriptors the process has. "Too many open files error" can happen when a process needs
-to open more files than the operating system allows, this limits can constrain how many concurrent requests the server
-can handle. Practically in order to avoid this behavior, you must think of a reasonable `StoreMaxBytes` capacity based
-on the nature of the records you are appending, and also have a background/scheduled thread to run `CollectSegmentsGarbage`
-in order to truncate the the Log based on some offset. Increasing the operating system file descriptor limit can also be an option.
-*/
+// Be aware that the OS have a limit called "the Operating System File Descriptor Limit" that will constrain
+// the maximum number of file descriptors the process has. "Too many open files error" can happen when a process needs
+// to open more files than the operating system allows, this limits can constrain how many concurrent requests the server
+// can handle. Practically in order to avoid this behavior, you must think of a reasonable `StoreMaxBytes` capacity based
+// on the nature of the records you are appending, and also have a background/scheduled thread to run `CollectSegments`
+// in order to truncate the the Log based on some offset. Increasing the operating system file descriptor limit can also be an option.
 type Config struct {
-	Data_dir      string
+	// File system directory where the physical store and index files will be stored
+	Data_dir string
+	// (Optional) Number of segments in the existing log data directory. To setup from a second run
 	NbrOfSegments int
+	// Max bytes to store in the store-file
 	StoreMaxBytes uint64
+	// Max bytes to store in the index-file
 	IndexMaxBytes uint64
 }
 
@@ -174,11 +169,11 @@ func (log *Log) Append(record []byte) (uint64, int, error) {
 		nn     int
 	)
 	// Delayed append can happen from a routine that was not able to acquire
-	// the activeSegment lock, and so when this happen (lock is acquired) probably
-	// the segment that the routine is referencing from previous `loadActiveSeg`
-	// is not anymore the active segment (i.e. `log.vactiveSegment.Store` of active segement happened)
-	// that's why we should retry in this case to **re-load** the active segment.
-	// This behavior occurs during the split segment, because we don't lock the whole append with log mutex
+	// the activeSegment lock, and so when this happen (the lock is acquired) probably
+	// the segment that the routine is referencing from previous `loadActiveSeg` is not anymore the active
+	// segment (i.e. `log.vactiveSegment.Store` of active segement happened).
+	// That's why we should retry in this case to **re-load** the active segment.
+	// This behavior occurs during the split segment, because we don't lock the whole append with log mutex.
 	for {
 		// retry
 		offset, nn, err = log.loadActiveSeg().Append(record)
@@ -210,7 +205,7 @@ func (log *Log) segmentSearch(offset int64) *Segment {
 	for left <= right {
 		mid = left + ((right - left) >> 1)
 		// check if the mid is pointing to the activeSeg or not. if not we can read without worying
-		// about locking (the Lock implementation in go in this case will CAS and go with the "fast path"
+		// about locking. The Lock implementation in go in this case will CAS and go with the "fast path".
 		var nextOffset uint64
 		if mid == currSize {
 			nextOffset = log.segments[mid].getNextOffset()
@@ -284,7 +279,7 @@ func (log *Log) Remove() error {
 	return nil
 }
 
-func (log *Log) CollectSegmentsGarbage(offset uint64) error {
+func (log *Log) CollectSegments(offset uint64) error {
 	// TODO
 	return nil
 }
