@@ -2,6 +2,7 @@ package comLog
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"sort"
 	"strconv"
@@ -10,11 +11,13 @@ import (
 	"sync/atomic"
 )
 
-var ConfigError = errors.New("Configuration error")
-var LogOutOfRange = errors.New("No record exists with this offset")
-var LogNotImplemented = errors.New("Not Supported")
+var (
+	ConfigError       = errors.New("configuration error")
+	LogOutOfRange     = errors.New("no record exists with the given offset")
+	LogNotImplemented = errors.New("the operation is not supported")
+)
 
-// Be aware that the OS have a limit called "the Operating System File Descriptor Limit" that will constrain
+// Log configuration. Be aware that the OS have a limit called "the Operating System File Descriptor Limit" that will constrain
 // the maximum number of file descriptors the process has. "Too many open files error" can happen when a process needs
 // to open more files than the operating system allows, this limits can constrain how many concurrent requests the server
 // can handle. Practically in order to avoid this behavior, you must think of a reasonable `StoreMaxBytes` capacity based
@@ -23,7 +26,7 @@ var LogNotImplemented = errors.New("Not Supported")
 type Config struct {
 	// File system directory where the physical store and index files will be stored
 	Data_dir string
-	// (Optional) Number of segments in the existing log data directory. To setup from a second run
+	// (Optional) Number of segments in the existing log data directory to setup from a second run
 	NbrOfSegments int
 	// Max bytes to store in the store-file
 	StoreMaxBytes uint64
@@ -31,25 +34,31 @@ type Config struct {
 	IndexMaxBytes uint64
 }
 
-// The Log struct that holds the list of used segments and maintain the reference
-// to the active segment
+// The Log structure that holds the list of used segments and maintains the reference to the active segment
 type Log struct {
 	Config
-	mu             sync.RWMutex
-	segments       []*Segment   // TODO(storage): garbage collection based on checkpoint
+	mu sync.RWMutex
+	// Data segements represented by the store and index
+	segments []*Segment // TODO(storage): garbage collection based on checkpoint
+	// The active segment on which the current writes will take place
 	vactiveSegment atomic.Value // TODO(performance): check atomic Pointer (*: Store is a bit faster but the Load is not)
 }
 
-// Init a new Log instance from the configuration
+// Init a new Log instance from the given configuration
 func NewLog(conf Config) (*Log, error) {
 	if conf.Data_dir == "" {
-		return nil, ConfigError
+		return nil, fmt.Errorf("%w: Data_dir is empty", ConfigError)
 	}
+
 	if conf.StoreMaxBytes == 0 || conf.IndexMaxBytes == 0 {
-		return nil, ConfigError
+		return nil, fmt.Errorf("%w: StoreMaxBytes and IndexMaxBytes cannot be zeros", ConfigError)
 	}
-	var log *Log = &Log{Config: conf, segments: make([]*Segment, 0, conf.NbrOfSegments)}
-	var err error = log.setup()
+
+	var log *Log = &Log{
+		Config:   conf,
+		segments: make([]*Segment, 0, conf.NbrOfSegments),
+	}
+	err := log.setup()
 	if err != nil {
 		return nil, err
 	}
@@ -66,6 +75,7 @@ func (log *Log) setup() error {
 	if err != nil {
 		return err
 	}
+
 	var (
 		fileInfo      os.FileInfo
 		baseOffsetStr string
@@ -90,6 +100,7 @@ func (log *Log) setup() error {
 		}
 
 	}
+
 	var seg *Segment
 	if len(baseOffsets) > 0 {
 		// TODO: check first before sorting if the array is already
@@ -114,63 +125,61 @@ func (log *Log) setup() error {
 		}
 		log.segments = append(log.segments, seg)
 	}
+
 	log.segments[len(log.segments)-1].setIsActive(true)
 	log.vactiveSegment.Store(log.segments[len(log.segments)-1])
 	return nil
 }
 
-// Get the active segment
+// loadActiveSeg gets the active segment
 func (log *Log) loadActiveSeg() *Segment {
 	return log.vactiveSegment.Load().(*Segment)
 }
 
-// Create a new active segment when spliting
+// createNewActiveSeg creates a new active segment during the split phase
 func (log *Log) createNewActiveSeg() error {
 	var oldSegment *Segment = log.loadActiveSeg()
 	oldSegment.setIsActive(false)
 	// Implicit flush for the old segment
-	var err error = oldSegment.Flush(IndexMMAP_ASYNC)
+	err := oldSegment.Flush(IndexMMAP_ASYNC)
 	if err != nil {
 		return err
 	}
+
 	var nextBaseOffset uint64 = oldSegment.getNextOffset()
-	var newActiveSeg *Segment
-	newActiveSeg, err = NewSegment(log.Data_dir, log.StoreMaxBytes, log.IndexMaxBytes, nextBaseOffset)
+	newActiveSeg, err := NewSegment(log.Data_dir, log.StoreMaxBytes, log.IndexMaxBytes, nextBaseOffset)
 	if err != nil {
 		return err
 	}
+
 	log.segments = append(log.segments, newActiveSeg)
 	newActiveSeg.setIsActive(true)
 	log.vactiveSegment.Store(newActiveSeg)
+
 	return nil
 }
 
-// Check if the segment is Full from the index and store files
+// splitForNewActiveSeg checks if the segment is full from the index and store files
 func (log *Log) splitForNewActiveSeg() bool {
 	return log.loadActiveSeg().isFull()
 }
 
-// Append a record to the log. It returns the offset, the number of bytes written
-// and an error if any
-func (log *Log) Append(record []byte) (uint64, int, error) {
+// Append a record to the log. It returns the offset, the number of bytes written and an error if any
+func (log *Log) Append(record []byte) (offset uint64, nn int, err error) {
 	// to ensure split correctness
 	log.mu.Lock()
 	if log.splitForNewActiveSeg() {
-		var err = log.createNewActiveSeg()
+		err = log.createNewActiveSeg()
 		if err != nil {
 			log.mu.Unlock()
 			return 0, 0, err
 		}
 	}
 	log.mu.Unlock()
-	var (
-		err    error
-		offset uint64
-		nn     int
-	)
-	// Delayed append can happen from a routine that was not able to acquire
+
+	// Delayed append can happen from a goroutine that was not able to acquire
 	// the activeSegment lock, and so when this happen (the lock is acquired) probably
-	// the segment that the routine is referencing from previous `loadActiveSeg` is not anymore the active
+	// the segment that the goroutine is referencing from previous `loadActiveSeg` is not anymore the active
 	// segment (i.e. `log.vactiveSegment.Store` of active segement happened).
 	// That's why we should retry in this case to **re-load** the active segment.
 	// This behavior occurs during the split segment, because we don't lock the whole append with log mutex.
@@ -192,15 +201,17 @@ func (log *Log) segmentSearch(offset int64) *Segment {
 	// to protect log.segements slice
 	log.mu.RLock()
 	defer log.mu.RUnlock()
-	var currSize int = len(log.segments) - 1
+
+	currSize := len(log.segments) - 1
 	if offset == -1 {
-		// last entry -> last segment + last record in the last segment
+		// offset=-1 means last entry record that will be located in the last segment (aka active segment)
 		return log.segments[currSize]
 	}
-	var uOffset uint64 = uint64(offset)
+
+	uOffset := uint64(offset)
 	// binary search
-	var left int = 0
-	var right int = len(log.segments) - 1
+	left := 0
+	right := len(log.segments) - 1
 	var mid int
 	for left <= right {
 		mid = left + ((right - left) >> 1)
@@ -212,6 +223,7 @@ func (log *Log) segmentSearch(offset int64) *Segment {
 		} else {
 			nextOffset = log.segments[mid].nextOffset
 		}
+
 		if uOffset >= nextOffset {
 			left = mid + 1
 		} else if uOffset < log.segments[mid].baseOffset {
@@ -223,21 +235,18 @@ func (log *Log) segmentSearch(offset int64) *Segment {
 	return nil
 }
 
-// Read the record corresponding to the given offset. It returns the corresponding record
-// the number of bytes read and an error if any
-func (log *Log) Read(offset int64) (int, []byte, error) {
+// Read reads the record corresponding to the given offset. It returns the corresponding record,
+// the number of bytes read and an error if any.
+func (log *Log) Read(offset int64) (nn int, record []byte, err error) {
 	if offset < -1 {
 		return 0, nil, LogNotImplemented
 	}
+
 	var targetSegment *Segment = log.segmentSearch(offset)
 	if targetSegment == nil {
 		return 0, nil, LogOutOfRange
 	}
-	var (
-		nn     int
-		record []byte
-		err    error
-	)
+
 	nn, record, err = targetSegment.Read(offset)
 	if err != nil {
 		return 0, nil, err
@@ -245,8 +254,8 @@ func (log *Log) Read(offset int64) (int, []byte, error) {
 	return nn, record, nil
 }
 
-// Explicit Flush/Commit the log. It touches only the active segment.
-// The index file mmap linked to the active segment can be flushed synchronously or asynchronously
+// Explicit Flush/Commit the log flushes the active segment.
+// The index file mmap linked to the active segment can be flushed synchronously or asynchronously.
 func (log *Log) Flush(indexMMAP_Sync IndexSync) error {
 	return log.loadActiveSeg().Flush(indexMMAP_Sync)
 }
@@ -255,9 +264,9 @@ func (log *Log) Flush(indexMMAP_Sync IndexSync) error {
 func (log *Log) Close() error {
 	log.mu.Lock()
 	defer log.mu.Unlock()
-	var err error
+
 	for i := 0; i < len(log.segments); i++ {
-		err = log.segments[i].Close()
+		err := log.segments[i].Close()
 		if err != nil {
 			return err
 		}
@@ -269,9 +278,9 @@ func (log *Log) Close() error {
 func (log *Log) Remove() error {
 	log.mu.Lock()
 	defer log.mu.Unlock()
-	var err error
+
 	for i := 0; i < len(log.segments); i++ {
-		err = log.segments[i].Remove()
+		err := log.segments[i].Remove()
 		if err != nil {
 			return err
 		}
