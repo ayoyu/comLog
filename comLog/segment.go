@@ -1,12 +1,12 @@
 package comLog
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
 
-	"github.com/pkg/errors"
 	"github.com/tysonmote/gommap"
 )
 
@@ -24,10 +24,10 @@ const (
 	IndexMMAP_ASYNC
 )
 
-var NotActiveAnymore = errors.New("Abort append, the Segment becomes old")
+var NotActiveAnymore = errors.New("abort append, the pointed Segment is not active anymore")
 
 // The Segment structure that holds the pair index-store files.
-// It maintains the base Offset and keep track of the next Offset
+// It maintains the base Offset and keep track of the next Offset.
 type Segment struct {
 	mu         sync.RWMutex
 	storeFile  *store
@@ -46,7 +46,7 @@ Init a new segment (store and index files)
 	:param: idxMaxBytes: max bytes to store in the index-file
 	:param: baseOffset: the start indexing offset
 */
-func NewSegment(dir string, smaxBytes, idxMaxBytes uint64, baseOffset uint64) (*Segment, error) {
+func NewSegment(dir string, stmaxBytes, idxMaxBytes, baseOffset uint64) (*Segment, error) {
 	var (
 		err        error
 		storeFile  *store
@@ -55,30 +55,38 @@ func NewSegment(dir string, smaxBytes, idxMaxBytes uint64, baseOffset uint64) (*
 		idxfile    *os.File
 		nextOffset uint64
 	)
-	var newSeg *Segment = &Segment{baseOffset: baseOffset, path: dir}
+
+	var newSeg *Segment = &Segment{
+		baseOffset: baseOffset,
+		path:       dir,
+	}
+	// init the store
 	sfile, err = os.OpenFile(newSeg.getStorePath(), os.O_CREATE|os.O_APPEND|os.O_RDWR, 0666)
 	if err != nil {
-		return nil, errors.Wrap(err, segContext+"Failed to openFile store file")
+		return nil, fmt.Errorf(segContext+"Failed to openFile store file. Err: %w", err)
 	}
-	storeFile, err = newStore(sfile, smaxBytes)
+	storeFile, err = newStore(sfile, stmaxBytes)
 	if err != nil {
-		return nil, errors.Wrap(err, segContext+"Failed to init store file")
+		return nil, fmt.Errorf(segContext+"Failed to init store file. Err: %w", err)
 	}
+
+	// init the index
 	idxfile, err = os.OpenFile(newSeg.getIndexPath(), os.O_CREATE|os.O_APPEND|os.O_RDWR, 0666)
 	if err != nil {
-		return nil, errors.Wrap(err, segContext+"Failed to openFile index file")
+		return nil, fmt.Errorf(segContext+"Failed to openFile index file. Err: %w", err)
 	}
 	indexFile, err = newIndex(idxfile, idxMaxBytes)
 	if err != nil {
-		return nil, errors.Wrap(err, segContext+"Failed to init index file")
+		return nil, fmt.Errorf(segContext+"Failed to init index file. Err: %w", err)
 	}
-	// this will generalize also for existing files with some size
-	// if size=0 this will be just the baseOffset
+	// this will generalize also for existing files with a certain size
+	// (if size=0 this will be just the baseOffset)
 	nextOffset = indexFile.nbrOfIndexes() + baseOffset
 
 	newSeg.storeFile = storeFile
 	newSeg.indexFile = indexFile
 	newSeg.nextOffset = nextOffset
+
 	return newSeg, nil
 }
 
@@ -107,26 +115,26 @@ func (seg *Segment) isFull() bool {
 
 // Append a new record to the segment.
 // It returns the offset, number of bytes written and an error if any
-func (seg *Segment) Append(record []byte) (uint64, int, error) {
-	var (
-		err error
-		pos uint64
-		nn  int // nbr of bytes written
-	)
+func (seg *Segment) Append(record []byte) (currOffset uint64, nn int, err error) {
 	seg.mu.Lock()
 	defer seg.mu.Unlock()
+
 	if !seg.isActive {
 		return 0, 0, NotActiveAnymore
 	}
-	var currOffset uint64 = seg.nextOffset
+
+	currOffset = seg.nextOffset
+	var pos uint64
 	nn, pos, err = seg.storeFile.append(record)
 	if err != nil {
-		return 0, 0, errors.Wrap(err, segContext+"Failed to write record in store file")
+		return 0, 0, fmt.Errorf(segContext+"Failed to write record in the store file. Err: %w", err)
 	}
+
 	err = seg.indexFile.append(currOffset, pos)
 	if err != nil {
-		return 0, 0, errors.Wrap(err, segContext+"Failed to write to index file")
+		return 0, 0, fmt.Errorf(segContext+"Failed to write to index file. Err: %w", err)
 	}
+
 	seg.nextOffset++
 	return currOffset, nn, nil
 }
@@ -143,36 +151,36 @@ func (seg *Segment) setIsActive(b bool) {
 	seg.mu.Unlock()
 }
 
-// Get record corresponding to the given offset.
+// Read reads the record corresponding to the given offset.
 // It returns the number of bytes read, the record and an error if any
-func (seg *Segment) Read(offset int64) (int, []byte, error) {
+func (seg *Segment) Read(offset int64) (nn int, record []byte, err error) {
 	var (
-		err          error
 		scaledOffset int64
 		pos          uint64
-		nn           int // nbr of bytes readed
-		record       []byte
 	)
-	// scale offset to baseOffset
+	// scale the offset to baseOffset
 	if offset == -1 {
 		scaledOffset = -1 // last entry
 	} else {
 		scaledOffset = offset - int64(seg.baseOffset)
 	}
+
 	seg.mu.RLock()
 	defer seg.mu.RUnlock()
 	pos, err = seg.indexFile.read(scaledOffset)
 	if err != nil {
-		return 0, nil, errors.Wrap(err, segContext+"Failed to get record position from index file")
+		return 0, nil, fmt.Errorf(segContext+"Failed to get record position from index file. Err: %w", err)
 	}
+
 	nn, record, err = seg.storeFile.read(pos)
 	if err != nil {
-		return 0, nil, errors.Wrap(err, segContext+"Failed to get record from store file")
+		return 0, nil, fmt.Errorf(segContext+"Failed to get record from store file. Err: %w", err)
 	}
+
 	return nn, record, nil
 }
 
-// Explicit Commit to flush back the store buffer to disk and Sync synchronously or asynchronously
+// Flush/Explicit Commit to flush back the store buffer to disk and synchronize synchronously or asynchronously
 // the index mmap region with the underlying file.
 func (seg *Segment) Flush(indexMMAPSync IndexSync) error {
 	seg.mu.Lock()
@@ -180,16 +188,19 @@ func (seg *Segment) Flush(indexMMAPSync IndexSync) error {
 	var err error
 	err = seg.storeFile.writeBuf.Flush()
 	if err != nil {
-		return errors.Wrap(err, segContext+"Failed to flush the store buffer")
+		return fmt.Errorf(segContext+"Failed to flush the store buffer. Err: %w", err)
 	}
+
 	switch indexMMAPSync {
 	case IndexMMAP_ASYNC:
 		err = seg.indexFile.mmap.Sync(gommap.MS_ASYNC)
+
 	case IndexMMAP_SYNC:
 		err = seg.indexFile.mmap.Sync(gommap.MS_SYNC)
 	}
+
 	if err != nil {
-		return errors.Wrap(err, segContext+"Failed to sync the index mmap")
+		return fmt.Errorf(segContext+"Failed to sync the index mmap. Err: %w", err)
 	}
 	return nil
 }
@@ -198,47 +209,48 @@ func (seg *Segment) Flush(indexMMAPSync IndexSync) error {
 func (seg *Segment) Close() error {
 	seg.mu.Lock()
 	defer seg.mu.Unlock()
-	var err error
-	err = seg.indexFile.close()
+
+	err := seg.indexFile.close()
 	if err != nil {
-		return errors.Wrap(err, segContext+"Failed to close index file")
+		return fmt.Errorf(segContext+"Failed to close index file. Err: %w", err)
 	}
+
 	err = seg.storeFile.close()
 	if err != nil {
-		return errors.Wrap(err, segContext+"Failed to close store file")
+		return fmt.Errorf(segContext+"Failed to close store file. Err: %w", err)
 	}
+
 	return nil
 }
 
 // Remove the segment by removing the store and index files
 func (seg *Segment) Remove() error {
-	var err error
-	err = seg.Close()
-	if err != nil {
-		return err
+	err := seg.Close()
+
+	if err == nil {
+		err = os.Remove(seg.storeFile.Name())
+		if err != nil {
+			return fmt.Errorf(segContext+"Failed to remove index file. Err: %w", err)
+		}
+		err = os.Remove(seg.indexFile.Name())
+		if err != nil {
+			return fmt.Errorf(segContext+"Failed to remove store file. Err: %w", err)
+		}
 	}
-	err = os.Remove(seg.storeFile.Name())
-	if err != nil {
-		return errors.Wrap(err, segContext+"Failed to remove index file")
-	}
-	err = os.Remove(seg.indexFile.Name())
-	if err != nil {
-		return errors.Wrap(err, segContext+"Failed to remove store file")
-	}
-	return nil
+
+	return err
 }
 
-// Read at the corresponding position in the store file linked to the segment
-func (seg *Segment) ReadAt(b []byte, position uint64) (int, error) {
-	var (
-		err error
-		nn  int
-	)
+// ReadAt reads from the corresponding position in the store file linked to the segment and put it
+// in the given buffer
+func (seg *Segment) ReadAt(buf []byte, position uint64) (nn int, err error) {
 	seg.mu.RLock()
 	defer seg.mu.RUnlock()
-	nn, err = seg.storeFile.readAt(b, position)
+
+	nn, err = seg.storeFile.readAt(buf, position)
 	if err != nil {
-		return 0, errors.Wrap(err, segContext+"Faild to ReadAt")
+		return 0, fmt.Errorf(segContext+"Faild to read at position %d. Err: %w", position, err)
 	}
+
 	return nn, nil
 }

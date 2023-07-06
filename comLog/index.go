@@ -1,10 +1,11 @@
 package comLog
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"os"
 
-	"github.com/pkg/errors"
 	"github.com/tysonmote/gommap"
 )
 
@@ -15,7 +16,7 @@ const (
 	indexContext  = "[index]: "
 )
 
-var OutOfRangeError = errors.New(indexContext + "The given offset is not yet filled (out of range)")
+var IndexOutOfRangeError = errors.New("the given offset is not yet filled (out of range)")
 
 type index struct {
 	file     *os.File
@@ -32,30 +33,40 @@ func newIndex(file *os.File, maxBytes uint64) (*index, error) {
 	)
 	fileInfo, err = os.Stat(file.Name())
 	if err != nil {
-		return nil, errors.Wrap(err, indexContext+"Failed to get fileInfo")
+		return nil, fmt.Errorf(indexContext+"Failed to get fileInfo. Err: %w", err)
 	}
-	var realFileSize uint64 = uint64(fileInfo.Size()) // Real size before growing the file index
+	// Real size before growing the file index
+	realFileSize := uint64(fileInfo.Size())
 	// grow the size of the file with spaces to maxByte to get a mmap-buf with the same size
 	err = os.Truncate(file.Name(), int64(maxBytes))
 	if err != nil {
-		return nil, errors.Wrap(err, indexContext+"Failed to truncate index file to grow its size to maxBytes")
+		return nil, fmt.Errorf(indexContext+"Failed to truncate index file to grow its size to maxBytes. Err: %w", err)
 	}
+
 	mmap, err = gommap.Map(file.Fd(), gommap.PROT_READ|gommap.PROT_WRITE, gommap.MAP_SHARED)
 	if err != nil {
-		return nil, errors.Wrap(err, indexContext+"Failed to mmap the index file")
+		return nil, fmt.Errorf(indexContext+"Failed to mmap the index file. Err: %w", err)
 	}
-	return &index{file: file, size: realFileSize, mmap: mmap, maxBytes: maxBytes}, nil
+
+	return &index{
+		file:     file,
+		size:     realFileSize,
+		mmap:     mmap,
+		maxBytes: maxBytes,
+	}, nil
 }
 
 func (idx *index) append(offset, position uint64) error {
 	var currPos uint64 = idx.size
 	// maxBytes = len(mmap)
 	if idx.maxBytes-currPos < indexWidth {
-		return errors.Wrap(io.EOF, indexContext+"Failed to append (offset, position), no more space EOF")
+		return fmt.Errorf(indexContext+"Failed to append (offset, position), no more space EOF. Err: %w", io.EOF)
 	}
+
 	encoding.PutUint64(idx.mmap[currPos:currPos+offsetWidth], offset)
 	encoding.PutUint64(idx.mmap[currPos+offsetWidth:currPos+indexWidth], position)
 	idx.size += indexWidth
+
 	return nil
 }
 
@@ -68,29 +79,34 @@ func (idx *index) read(offset int64) (uint64, error) {
 		// offset must be scaled to the baseOffset
 		pos = uint64(offset) * indexWidth
 	}
+
 	if pos+indexWidth > idx.size {
 		// this pos is not yet filled
-		return 0, OutOfRangeError
+		return 0, IndexOutOfRangeError
 	}
-	var recordPosition uint64 = encoding.Uint64(idx.mmap[pos+offsetWidth : pos+indexWidth])
-	return recordPosition, nil
+	var recordPos uint64 = encoding.Uint64(idx.mmap[pos+offsetWidth : pos+indexWidth])
+
+	return recordPos, nil
 }
 
+// Returns nbr of index entries
 func (idx *index) nbrOfIndexes() uint64 {
-	// returns nbr of index entries
 	return idx.size / indexWidth
 }
 
 func (idx *index) close() error {
 	if err := idx.mmap.Sync(gommap.MS_SYNC); err != nil {
-		return errors.Wrap(err, indexContext+"Faild to Sync/Flush back to device the mmap index file")
+		return fmt.Errorf(indexContext+"Faild to Sync/Flush back to device the mmap index file. Err: %w", err)
 	}
+
 	if err := idx.file.Sync(); err != nil {
-		return errors.Wrap(err, indexContext+"Failed to flush the index file to stable storage")
+		return fmt.Errorf(indexContext+"Failed to flush the index file to stable storage. Err: %w", err)
 	}
+
 	if err := idx.file.Truncate(int64(idx.size)); err != nil {
-		return errors.Wrap(err, indexContext+"Failed to truncate the index file to the last tracked size")
+		return fmt.Errorf(indexContext+"Failed to truncate the index file to the last tracked size. Err: %w", err)
 	}
+
 	return idx.file.Close()
 }
 

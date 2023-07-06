@@ -78,7 +78,7 @@ func TestIndexAppendEOF(t *testing.T) {
 	assert.ErrorIs(t, err, io.EOF)
 	assert.Equal(
 		t, err.Error(),
-		"[index]: Failed to append (offset, position), no more space EOF: EOF",
+		"[index]: Failed to append (offset, position), no more space EOF. Err: EOF",
 	)
 	// remove the temp test data
 	removeTempFile(index.file.Name())
@@ -109,10 +109,10 @@ func TestIndexReadOutofRangeError(t *testing.T) {
 	assert.Nil(t, err)
 	pos, err := index.read(1)
 	assert.Equal(t, int(pos), 0)
-	assert.ErrorIs(t, err, OutOfRangeError)
+	assert.ErrorIs(t, err, IndexOutOfRangeError)
 	assert.Equal(
 		t, err.Error(),
-		"[index]: The given offset is not yet filled (out of range)",
+		"the given offset is not yet filled (out of range)",
 	)
 	// remove the temp test data
 	removeTempFile(index.file.Name())

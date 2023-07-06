@@ -90,10 +90,10 @@ func TestLogSegmentSearch(t *testing.T) {
 	conf := Config{}
 	log := &Log{Config: conf}
 	log.segments = []*Segment{
-		&Segment{baseOffset: 0, nextOffset: 10},
-		&Segment{baseOffset: 10, nextOffset: 20},
-		&Segment{baseOffset: 20, nextOffset: 30},
-		&Segment{baseOffset: 30, nextOffset: 40},
+		{baseOffset: 0, nextOffset: 10},
+		{baseOffset: 10, nextOffset: 20},
+		{baseOffset: 20, nextOffset: 30},
+		{baseOffset: 30, nextOffset: 40},
 	}
 	cases := map[int64]*Segment{
 		0:  log.segments[0],
