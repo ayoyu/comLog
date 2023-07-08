@@ -66,7 +66,7 @@ func (st *store) read(position uint64) (int, []byte, error) {
 	st.mu.Lock()
 	if err := st.writeBuf.Flush(); err != nil {
 		st.mu.Unlock()
-		return 0, nil, fmt.Errorf(storeContext+"Failed to Flush file %s before reading. Err: %w", st.name(), err)
+		return 0, nil, fmt.Errorf(storeContext+"Failed to Flush the write buffer for file %s before reading. Err: %w", st.name(), err)
 	}
 	st.mu.Unlock()
 
@@ -107,7 +107,7 @@ func (st *store) readAt(buf []byte, position uint64) (int, error) {
 
 func (st *store) close() error {
 	if err := st.writeBuf.Flush(); err != nil {
-		return fmt.Errorf(storeContext+"Failed to close the store file %s. Err: %w", st.name(), err)
+		return fmt.Errorf(storeContext+"Failed to Flush the write buffer for file %s. Err: %w", st.name(), err)
 	}
 
 	return st.file.Close()

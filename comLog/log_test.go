@@ -36,12 +36,19 @@ func TestLogSetupFomPreviousRun(t *testing.T) {
 	baseoffsets := []string{"40", "10", "0", "20"}
 	log_dir, err := createLogDir(baseoffsets)
 	assert.Nil(t, err)
-	defer removeTempDir(log_dir)
+	// defer removeTempDir(log_dir)
 	conf := createConfig(log_dir)
 	log := &Log{Config: conf}
 	err = log.setup()
 	assert.Nil(t, err)
+	defer func() {
+		t.Logf("Deleting the log from %s ...", log_dir)
+		err = log.Remove()
+		assert.Nil(t, err, "cannot remove the log from %s. Don't forget to remove it latter", log_dir)
+	}()
+
 	assert.Equal(t, len(log.segments), len(baseoffsets), 4)
+
 	sortedoffsets := []string{"0", "10", "20", "40"}
 	for i := 0; i < len(log.segments); i++ {
 		seg := log.segments[i]
@@ -69,11 +76,17 @@ func TestLogSetupFomPreviousRun(t *testing.T) {
 
 func TestLogSetupFirstRun(t *testing.T) {
 	log_dir := getTempDir(test_log_dir)
-	defer removeTempDir(log_dir)
+	// defer removeTempDir(log_dir)
 	conf := createConfig(log_dir)
 	log := &Log{Config: conf}
 	err := log.setup()
 	assert.Nil(t, err)
+	defer func() {
+		t.Logf("Deleting the log from %s ...", log_dir)
+		err = log.Remove()
+		assert.Nil(t, err, "cannot remove the log from %s. Don't forget to remove it latter", log_dir)
+	}()
+
 	assert.Equal(t, len(log.segments), 1)
 	assert.NotNil(t, log.loadActiveSeg())
 	assert.Equal(

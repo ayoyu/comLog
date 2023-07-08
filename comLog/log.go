@@ -302,16 +302,11 @@ func (log *Log) Close() error {
 
 // Remove removes the Log with all its segements it was able to remove until an error occur or not.
 func (log *Log) Remove() error {
-	log.mu.Lock()
-	defer log.mu.Unlock()
-
-	for i := 0; i < len(log.segments); i++ {
-		err := log.segments[i].Remove()
-		if err != nil {
-			return err
-		}
+	if err := log.Close(); err != nil {
+		return err
 	}
-	return nil
+
+	return os.RemoveAll(log.Data_dir)
 }
 
 // SegmentsSize returns the current number of log segments.
