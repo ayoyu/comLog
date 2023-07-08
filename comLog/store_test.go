@@ -100,7 +100,7 @@ func TestStoreClose(t *testing.T) {
 	}
 	err = store.close()
 	assert.Nil(t, err)
-	reopenFile, err := reopenClosedFile(store.Name())
+	reopenFile, err := reopenClosedFile(store.name())
 	assert.Nil(t, err)
 	reopenFileInfo := getFileInfo(reopenFile)
 	assert.Equal(
@@ -115,7 +115,7 @@ func TestStoreClose(t *testing.T) {
 func TestStoreName(t *testing.T) {
 	store, err := getStore(DefaultMaxBytesStore)
 	assert.Nil(t, err)
-	assert.Equal(t, store.Name(), store.file.Name())
+	assert.Equal(t, store.name(), store.file.Name())
 	// remove temp test data
 	removeTempFile(store.file.Name())
 }

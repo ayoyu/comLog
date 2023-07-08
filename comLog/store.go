@@ -26,7 +26,7 @@ type store struct {
 func newStore(file *os.File, maxBytes uint64) (*store, error) {
 	fileInfo, err := os.Stat(file.Name())
 	if err != nil {
-		return nil, fmt.Errorf(storeContext+"Failed to init store. Err: %w", err)
+		return nil, fmt.Errorf(storeContext+"Failed to get fileInfo for file %s. Err: %w", file.Name(), err)
 	}
 	// the size of the buffer is (defaultBufSize = 4096)
 	var newWriteBuf *bufio.Writer = bufio.NewWriterSize(file, int(maxBytes))
@@ -44,7 +44,7 @@ func (st *store) append(record []byte) (nn int, pos uint64, err error) {
 	pos = st.size
 	// Write first the length of the record. The record will be **prefixed** by its length
 	if err = binary.Write(st.writeBuf, encoding, uint64(len(record))); err != nil {
-		return 0, 0, fmt.Errorf(storeContext+"Failed to append size-bytes of the record. Err: %w", err)
+		return 0, 0, fmt.Errorf(storeContext+"Failed to append the record length-bytes as the prefix. Err: %w", err)
 	}
 
 	nn, err = st.writeBuf.Write(record)
@@ -66,7 +66,7 @@ func (st *store) read(position uint64) (int, []byte, error) {
 	st.mu.Lock()
 	if err := st.writeBuf.Flush(); err != nil {
 		st.mu.Unlock()
-		return 0, nil, fmt.Errorf(storeContext+"Failed to Flush before reading. Err: %w", err)
+		return 0, nil, fmt.Errorf(storeContext+"Failed to Flush file %s before reading. Err: %w", st.name(), err)
 	}
 	st.mu.Unlock()
 
@@ -107,13 +107,13 @@ func (st *store) readAt(buf []byte, position uint64) (int, error) {
 
 func (st *store) close() error {
 	if err := st.writeBuf.Flush(); err != nil {
-		return fmt.Errorf(storeContext+"Failed to close the store file. Err: %w", err)
+		return fmt.Errorf(storeContext+"Failed to close the store file %s. Err: %w", st.name(), err)
 	}
 
 	return st.file.Close()
 }
 
 // Returns the Name of the store file
-func (st *store) Name() string {
+func (st *store) name() string {
 	return st.file.Name()
 }

@@ -61,7 +61,9 @@ func BenchmarkLog_ReadOnly_After_Bulk_Writes(b *testing.B) {
 			i++
 		}
 	})
-	log.Close()
+	if err := log.Close(); err != nil {
+		b.Error(err)
+	}
 	os.RemoveAll(log_dir)
 }
 
@@ -85,7 +87,9 @@ func Log_Write_WorkLoad_Record_Length(b *testing.B, length int) {
 			}
 		}
 	})
-	log.Close()
+	if err := log.Close(); err != nil {
+		b.Error(err)
+	}
 	os.RemoveAll(log_dir)
 }
 
@@ -113,7 +117,9 @@ func Log_Write_Read_WorkLoad_Record_Length(b *testing.B, length int) {
 			}
 		}
 	})
-	log.Close()
+	if err := log.Close(); err != nil {
+		b.Error(err)
+	}
 	os.RemoveAll(log_dir)
 }
 

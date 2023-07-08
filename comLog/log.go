@@ -62,6 +62,7 @@ func NewLog(conf Config) (*Log, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return log, nil
 }
 
@@ -265,16 +266,41 @@ func (log *Log) Close() error {
 	log.mu.Lock()
 	defer log.mu.Unlock()
 
+	if len(log.segments) == 0 {
+		return nil
+	}
+
+	errCh := make(chan error, len(log.segments))
+	done := make(chan struct{})
 	for i := 0; i < len(log.segments); i++ {
-		err := log.segments[i].Close()
+		go func(i int) {
+			select {
+			case <-done:
+				return
+
+			default:
+				err := log.segments[i].Close()
+				select {
+				case <-done:
+					return
+				case errCh <- err:
+				}
+			}
+		}(i)
+	}
+
+	for i := 0; i < len(log.segments); i++ {
+		err := <-errCh
 		if err != nil {
+			// the first occured error is enough to finish and cancel the other goroutines
+			close(done)
 			return err
 		}
 	}
 	return nil
 }
 
-// Remove the Log. It will remove all segements it was able to remove until an error occur or not
+// Remove removes the Log with all its segements it was able to remove until an error occur or not.
 func (log *Log) Remove() error {
 	log.mu.Lock()
 	defer log.mu.Unlock()
@@ -286,6 +312,13 @@ func (log *Log) Remove() error {
 		}
 	}
 	return nil
+}
+
+// SegmentsSize returns the current number of log segments.
+func (log *Log) SegmentsSize() int {
+	log.mu.RLock()
+	defer log.mu.RUnlock()
+	return len(log.segments)
 }
 
 func (log *Log) CollectSegments(offset uint64) error {

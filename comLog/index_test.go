@@ -150,10 +150,18 @@ func TestIndexClose(t *testing.T) {
 	err = index.close() // will truncate the file to real size = lastSize
 	assert.Nil(t, err)
 
-	reopenFile, err := reopenClosedFile(index.Name())
+	reopenFile, err := reopenClosedFile(index.name())
 	assert.Nil(t, err)
 	reopenFileInfo := getFileInfo(reopenFile)
 	assert.Equal(t, reopenFileInfo.Size(), lastSize)
 	// remove the temp test data
+	removeTempFile(index.file.Name())
+}
+
+func TestIndexName(t *testing.T) {
+	index, err := getIndex(DefaultMaxBytesIndex)
+	assert.Nil(t, err)
+	assert.Equal(t, index.name(), index.file.Name())
+	// remove temp test data
 	removeTempFile(index.file.Name())
 }
