@@ -14,7 +14,7 @@ const (
 	storeFileSuffix = ".store"
 	indexFileSuffix = ".index"
 	fileFormat      = "%d%s"
-	segContext      = "[Segment]: "
+	segContext      = "[segment]: "
 )
 
 type IndexSync uint8
@@ -63,21 +63,21 @@ func NewSegment(dir string, stmaxBytes, idxMaxBytes, baseOffset uint64) (*Segmen
 	// init the store
 	sfile, err = os.OpenFile(newSeg.getStorePath(), os.O_CREATE|os.O_APPEND|os.O_RDWR, 0666)
 	if err != nil {
-		return nil, fmt.Errorf(segContext+"Failed to openFile store file. Err: %w", err)
+		return nil, fmt.Errorf(segContext+"Failed to open the store file. Err: %w", err)
 	}
 	storeFile, err = newStore(sfile, stmaxBytes)
 	if err != nil {
-		return nil, fmt.Errorf(segContext+"Failed to init store file. Err: %w", err)
+		return nil, fmt.Errorf(segContext+"Failed to init the store. Err: %w", err)
 	}
 
 	// init the index
 	idxfile, err = os.OpenFile(newSeg.getIndexPath(), os.O_CREATE|os.O_APPEND|os.O_RDWR, 0666)
 	if err != nil {
-		return nil, fmt.Errorf(segContext+"Failed to openFile index file. Err: %w", err)
+		return nil, fmt.Errorf(segContext+"Failed to open the index file. Err: %w", err)
 	}
 	indexFile, err = newIndex(idxfile, idxMaxBytes)
 	if err != nil {
-		return nil, fmt.Errorf(segContext+"Failed to init index file. Err: %w", err)
+		return nil, fmt.Errorf(segContext+"Failed to init the index. Err: %w", err)
 	}
 	// this will generalize also for existing files with a certain size
 	// (if size=0 this will be just the baseOffset)
@@ -228,11 +228,11 @@ func (seg *Segment) Remove() error {
 	err := seg.Close()
 
 	if err == nil {
-		err = os.Remove(seg.storeFile.Name())
+		err = os.Remove(seg.storeFile.name())
 		if err != nil {
 			return fmt.Errorf(segContext+"Failed to remove index file. Err: %w", err)
 		}
-		err = os.Remove(seg.indexFile.Name())
+		err = os.Remove(seg.indexFile.name())
 		if err != nil {
 			return fmt.Errorf(segContext+"Failed to remove store file. Err: %w", err)
 		}

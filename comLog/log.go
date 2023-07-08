@@ -62,6 +62,7 @@ func NewLog(conf Config) (*Log, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return log, nil
 }
 

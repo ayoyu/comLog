@@ -23,7 +23,7 @@ func TestNewSegment_EmptyIndexFile(t *testing.T) {
 	assert.Equal(t, baseOffset, segment.baseOffset)
 	assert.Equal(t, baseOffset, segment.nextOffset)
 	assert.Equal(t, dirpath, segment.path)
-	t.Logf("dir: %s, storefile: %s, indexfile: %s", dirpath, segment.storeFile.Name(), segment.indexFile.Name())
+	t.Logf("dir: %s, storefile: %s, indexfile: %s", dirpath, segment.storeFile.name(), segment.indexFile.name())
 }
 
 func TestNewSegment_NotEmptyIndexFile(t *testing.T) {

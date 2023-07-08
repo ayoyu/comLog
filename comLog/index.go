@@ -33,19 +33,19 @@ func newIndex(file *os.File, maxBytes uint64) (*index, error) {
 	)
 	fileInfo, err = os.Stat(file.Name())
 	if err != nil {
-		return nil, fmt.Errorf(indexContext+"Failed to get fileInfo. Err: %w", err)
+		return nil, fmt.Errorf(indexContext+"Failed to get fileInfo for file %s. Err: %w", file.Name(), err)
 	}
 	// Real size before growing the file index
 	realFileSize := uint64(fileInfo.Size())
 	// grow the size of the file with spaces to maxByte to get a mmap-buf with the same size
 	err = os.Truncate(file.Name(), int64(maxBytes))
 	if err != nil {
-		return nil, fmt.Errorf(indexContext+"Failed to truncate index file to grow its size to maxBytes. Err: %w", err)
+		return nil, fmt.Errorf(indexContext+"Failed to truncate the index file %s to grow its size to maxBytes. Err: %w", file.Name(), err)
 	}
 
 	mmap, err = gommap.Map(file.Fd(), gommap.PROT_READ|gommap.PROT_WRITE, gommap.MAP_SHARED)
 	if err != nil {
-		return nil, fmt.Errorf(indexContext+"Failed to mmap the index file. Err: %w", err)
+		return nil, fmt.Errorf(indexContext+"Failed to get mmap for the index file %s. Err: %w", file.Name(), err)
 	}
 
 	return &index{
@@ -96,21 +96,21 @@ func (idx *index) nbrOfIndexes() uint64 {
 
 func (idx *index) close() error {
 	if err := idx.mmap.Sync(gommap.MS_SYNC); err != nil {
-		return fmt.Errorf(indexContext+"Faild to Sync/Flush back to device the mmap index file. Err: %w", err)
+		return fmt.Errorf(indexContext+"Faild to Sync/Flush back to device the mmap index file %s. Err: %w", idx.name(), err)
 	}
 
 	if err := idx.file.Sync(); err != nil {
-		return fmt.Errorf(indexContext+"Failed to flush the index file to stable storage. Err: %w", err)
+		return fmt.Errorf(indexContext+"Failed to flush the index file %s to stable storage. Err: %w", idx.name(), err)
 	}
 
 	if err := idx.file.Truncate(int64(idx.size)); err != nil {
-		return fmt.Errorf(indexContext+"Failed to truncate the index file to the last tracked size. Err: %w", err)
+		return fmt.Errorf(indexContext+"Failed to truncate the index file %s to the last tracked size %d. Err: %w", idx.name(), idx.size, err)
 	}
 
 	return idx.file.Close()
 }
 
 // Returns the Name of the index file
-func (idx *index) Name() string {
+func (idx *index) name() string {
 	return idx.file.Name()
 }
