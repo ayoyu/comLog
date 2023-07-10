@@ -228,13 +228,11 @@ func (seg *Segment) Remove() error {
 	err := seg.Close()
 
 	if err == nil {
-		err = os.Remove(seg.storeFile.name())
-		if err != nil {
-			return fmt.Errorf(segContext+"Failed to remove index file. Err: %w", err)
+		if err = os.Remove(seg.storeFile.name()); err != nil {
+			return fmt.Errorf(segContext+"Failed to remove store file %s. Err: %w", seg.storeFile.name(), err)
 		}
-		err = os.Remove(seg.indexFile.name())
-		if err != nil {
-			return fmt.Errorf(segContext+"Failed to remove store file. Err: %w", err)
+		if err = os.Remove(seg.indexFile.name()); err != nil {
+			return fmt.Errorf(segContext+"Failed to remove index file %s. Err: %w", seg.indexFile.name(), err)
 		}
 	}
 
