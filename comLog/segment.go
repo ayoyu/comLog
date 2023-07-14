@@ -17,11 +17,11 @@ const (
 	segContext      = "[segment]: "
 )
 
-type IndexSync uint8
+type IndexSyncType uint8
 
 const (
-	IndexMMAP_SYNC IndexSync = iota
-	IndexMMAP_ASYNC
+	INDEX_MMAP_SYNC IndexSyncType = iota
+	INDEX_MMAP_ASYNC
 )
 
 var NotActiveAnymore = errors.New("abort append, the pointed Segment is not active anymore")
@@ -180,9 +180,9 @@ func (seg *Segment) Read(offset int64) (nn int, record []byte, err error) {
 	return nn, record, nil
 }
 
-// Flush/Explicit Commit to flush back the store buffer to disk and synchronize synchronously or asynchronously
+// Flush/Commit the segment to flush back the store buffer to disk and synchronize synchronously or asynchronously
 // the index mmap region with the underlying file.
-func (seg *Segment) Flush(indexMMAPSync IndexSync) error {
+func (seg *Segment) Flush(idxSyncType IndexSyncType) error {
 	seg.mu.Lock()
 	defer seg.mu.Unlock()
 	var err error
@@ -191,11 +191,11 @@ func (seg *Segment) Flush(indexMMAPSync IndexSync) error {
 		return fmt.Errorf(segContext+"Failed to flush the store buffer. Err: %w", err)
 	}
 
-	switch indexMMAPSync {
-	case IndexMMAP_ASYNC:
+	switch idxSyncType {
+	case INDEX_MMAP_ASYNC:
 		err = seg.indexFile.mmap.Sync(gommap.MS_ASYNC)
 
-	case IndexMMAP_SYNC:
+	case INDEX_MMAP_SYNC:
 		err = seg.indexFile.mmap.Sync(gommap.MS_SYNC)
 	}
 

@@ -106,7 +106,7 @@ func LogMixAppendReadWorkLoad(verbose bool) error {
 	return nil
 }
 
-func LogAppendWorkLoad(verbose bool) error {
+func MixWorkLoad(verbose bool) error {
 	// Append and Flush are Concurrnents
 	// The read will be at the end in sync mode to check results
 	log_dir, err := os.MkdirTemp("", "test_bench")
@@ -127,7 +127,7 @@ func LogAppendWorkLoad(verbose bool) error {
 			// make periodic explicit flush of the log
 			wait.Add(1)
 			go func() {
-				err := log.Flush(comLog.IndexMMAP_SYNC)
+				err := log.Flush(comLog.INDEX_MMAP_SYNC)
 				if err != nil && verbose {
 					fmt.Println("???????????????????????? Log Flush/Commit error", err)
 				}
@@ -223,6 +223,6 @@ func LogAppendWorkLoad(verbose bool) error {
 }
 
 func main() {
-	LogAppendWorkLoad(true)
+	MixWorkLoad(true)
 	// LogMixAppendReadWorkLoad(true)
 }

@@ -141,8 +141,8 @@ func (log *Log) loadActiveSeg() *Segment {
 func (log *Log) createNewActiveSeg() error {
 	var oldSegment *Segment = log.loadActiveSeg()
 	oldSegment.setIsActive(false)
-	// Implicit flush for the old segment
-	err := oldSegment.Flush(IndexMMAP_ASYNC)
+	// Implicit async flush for the old segment
+	err := oldSegment.Flush(INDEX_MMAP_ASYNC)
 	if err != nil {
 		return err
 	}
@@ -255,10 +255,11 @@ func (log *Log) Read(offset int64) (nn int, record []byte, err error) {
 	return nn, record, nil
 }
 
-// Explicit Flush/Commit the log flushes the active segment.
-// The index file mmap linked to the active segment can be flushed synchronously or asynchronously.
-func (log *Log) Flush(indexMMAP_Sync IndexSync) error {
-	return log.loadActiveSeg().Flush(indexMMAP_Sync)
+// Explicit Flush/Commit of the log by flushing the active segment (old segments are already flushed to disk).
+// The idxSyncType parameter specifies wheter flushing should be done synchronously or asynchronously regarding the index
+// mmap linked to the active segment.
+func (log *Log) Flush(idxSyncType IndexSyncType) error {
+	return log.loadActiveSeg().Flush(idxSyncType)
 }
 
 // Close the Log. It will close all segemnts it was able to close until an error occur or not.
@@ -316,6 +317,8 @@ func (log *Log) SegmentsSize() int {
 	return len(log.segments)
 }
 
+// CollectSegements deletes log segements that contains records older than the given offset.
+// It acts as a segment garbage collector for the log.
 func (log *Log) CollectSegments(offset uint64) error {
 	// TODO
 	return nil
