@@ -1,6 +1,7 @@
 package comLog
 
 import (
+	"errors"
 	"os"
 	"path"
 	"testing"
@@ -144,4 +145,25 @@ func TestSegmentBasicRead(t *testing.T) {
 		t.Logf("********************************")
 
 	}
+}
+
+func TestClosingSegment(t *testing.T) {
+	dirpath, err := getTempDir(test_segment_dir)
+	assert.Nil(t, err)
+	defer removeTempDir(dirpath)
+
+	var baseOffset uint64 = 0
+	seg, err := NewSegment(dirpath, DefaultMaxBytesStore, DefaultMaxBytesStore, baseOffset)
+	assert.Nil(t, err)
+	seg.setIsActive(true)
+
+	offset, _, err := seg.Append([]byte("Hello"))
+	assert.Nil(t, err)
+	assert.Nil(t, seg.Close())
+
+	_, _, err = seg.Append([]byte("Hello"))
+	assert.True(t, errors.Is(err, os.ErrClosed))
+
+	_, _, err = seg.Read(int64(offset))
+	assert.True(t, errors.Is(err, os.ErrClosed))
 }

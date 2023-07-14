@@ -1,6 +1,7 @@
 package comLog
 
 import (
+	"errors"
 	"os"
 	"path"
 	"testing"
@@ -128,4 +129,28 @@ func TestLogSegmentSearch(t *testing.T) {
 		ans := log.segmentSearch(offset)
 		assert.Equal(t, ans, targetSeg)
 	}
+}
+
+func TestClosingLog(t *testing.T) {
+	log_dir, err := getTempDir(test_log_dir)
+	assert.Nil(t, err)
+	defer removeTempDir(log_dir)
+
+	conf := createConfig(log_dir)
+	log, err := NewLog(conf)
+	assert.Nil(t, err)
+
+	offset, _, err := log.Append([]byte("Hello"))
+	assert.Nil(t, err)
+	assert.Nil(t, log.Close())
+
+	t.Logf("Log segments size: %d", log.SegmentsSize())
+
+	_, _, err = log.Append([]byte("Foo"))
+	t.Logf("Closing Error: %s", err)
+	assert.True(t, errors.Is(err, os.ErrClosed))
+
+	_, _, err = log.Read(int64(offset))
+	t.Logf("Closing Error: %s", err)
+	assert.True(t, errors.Is(err, os.ErrClosed))
 }
