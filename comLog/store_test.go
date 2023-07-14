@@ -11,15 +11,20 @@ var DefaultMaxBytesStore uint64 = 4096
 const test_store_file = "test_store_file_"
 
 func getStore(maxBytes uint64) (*store, error) {
-	file := getTempfile("", test_store_file)
-	store, err := newStore(file, maxBytes)
-	return store, err
+	file, err := getTempfile("", test_store_file)
+	if err != nil {
+		return nil, err
+	}
+	return newStore(file, maxBytes)
 }
 
 func TestNewStore(t *testing.T) {
 	store, err := getStore(DefaultMaxBytesStore)
 	assert.Nil(t, err)
-	fileInfo := getFileInfo(store.file)
+
+	fileInfo, err := getFileInfo(store.file)
+	assert.Nil(t, err)
+
 	// Size will access len(writeBuf.buf) where buf is []byte
 	assert.Equal(t, store.writeBuf.Size(), int(DefaultMaxBytesStore), "error: len(write.buf) != maxBytes")
 	assert.Equal(t, store.size, uint64(fileInfo.Size()), "store.size != file.size")
@@ -86,9 +91,13 @@ func TestStoreRead(t *testing.T) {
 }
 
 func TestStoreClose(t *testing.T) {
-	file := getTempfile("", test_store_file)
-	fileInfo := getFileInfo(file)
+	file, err := getTempfile("", test_store_file)
+	assert.Nil(t, err)
+
+	fileInfo, err := getFileInfo(file)
+	assert.Nil(t, err)
 	assert.Equal(t, int(fileInfo.Size()), 0)
+
 	store, err := newStore(file, DefaultMaxBytesStore)
 	assert.Nil(t, err)
 	// make some writes to test the buffer flush
@@ -100,9 +109,11 @@ func TestStoreClose(t *testing.T) {
 	}
 	err = store.close()
 	assert.Nil(t, err)
-	reopenFile, err := reopenClosedFile(store.name())
+
+	reopenFile, err := openFile(store.name())
 	assert.Nil(t, err)
-	reopenFileInfo := getFileInfo(reopenFile)
+	reopenFileInfo, err := getFileInfo(reopenFile)
+	assert.Nil(t, err)
 	assert.Equal(
 		t, int(reopenFileInfo.Size()), curr_buffered_bytes_data,
 		"Closed/flushed file store size != buffered data size",

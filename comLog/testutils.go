@@ -5,47 +5,32 @@ import (
 	"os"
 )
 
-func getTempfile(dir, filename string) *os.File {
-	file, _ := os.CreateTemp(dir, filename)
-	return file
+func getTempfile(dir, filename string) (*os.File, error) {
+	return os.CreateTemp(dir, filename)
 }
 
-func getTempDir(dirname string) string {
-	dirpath, _ := os.MkdirTemp("", dirname)
-	return dirpath
+func getTempDir(dirname string) (string, error) {
+	return os.MkdirTemp("", dirname)
 }
 
-func getFileInfo(file *os.File) os.FileInfo {
-	fileInfo, _ := os.Stat(file.Name())
-	return fileInfo
+func getFileInfo(file *os.File) (os.FileInfo, error) {
+	return os.Stat(file.Name())
 }
 
-func reopenClosedFile(filepath string) (*os.File, error) {
-	file, err := os.OpenFile(filepath, os.O_RDONLY, 0644)
-	if err != nil {
-		return nil, err
-	}
-	return file, nil
+func openFile(filepath string) (*os.File, error) {
+	return os.OpenFile(filepath, os.O_RDONLY, 0644)
 }
 
 func removeTempFile(filepath string) {
 	err := os.Remove(filepath)
 	if err != nil {
-		fmt.Println(
-			"Test: Cannot remove the temporory file: ",
-			filepath,
-			" we will just pass try to remove it later :)",
-		)
+		fmt.Printf("Cannot remove the temporory file %s , try to remove it later\n", filepath)
 	}
 }
 
 func removeTempDir(dirpath string) {
 	err := os.RemoveAll(dirpath)
 	if err != nil {
-		fmt.Println(
-			"Test: Cannot remove the temporory dir: ",
-			dirpath,
-			" we will just pass try to remove it later :)",
-		)
+		fmt.Printf("Cannot remove the temporory directory %s, try to remove it later\n", dirpath)
 	}
 }

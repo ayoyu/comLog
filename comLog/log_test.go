@@ -11,8 +11,11 @@ import (
 const test_log_dir = "test_log_dir_"
 
 func createLogDir(baseoffsets []string) (string, error) {
-	dir := getTempDir(test_log_dir)
-	var err error
+	dir, err := getTempDir(test_log_dir)
+	if err != nil {
+		return "", err
+	}
+
 	for _, base := range baseoffsets {
 		storepath := path.Join(dir, base+".store")
 		indexpath := path.Join(dir, base+".index")
@@ -75,12 +78,14 @@ func TestLogSetupFomPreviousRun(t *testing.T) {
 }
 
 func TestLogSetupFirstRun(t *testing.T) {
-	log_dir := getTempDir(test_log_dir)
-	// defer removeTempDir(log_dir)
+	log_dir, err := getTempDir(test_log_dir)
+	assert.Nil(t, err)
+
 	conf := createConfig(log_dir)
 	log := &Log{Config: conf}
-	err := log.setup()
+	err = log.setup()
 	assert.Nil(t, err)
+
 	defer func() {
 		t.Logf("Deleting the log from %s ...", log_dir)
 		err = log.Remove()

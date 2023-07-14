@@ -12,9 +12,11 @@ const test_segment_dir = "test_segment_dir_"
 
 func TestNewSegment_EmptyIndexFile(t *testing.T) {
 	// from an empty index file
-	dirpath := getTempDir(test_segment_dir)
+	dirpath, err := getTempDir(test_segment_dir)
+	assert.Nil(t, err)
 	// remove temp test data
 	defer removeTempDir(dirpath)
+
 	var baseOffset uint64 = 0
 	segment, err := NewSegment(dirpath, DefaultMaxBytesStore, DefaultMaxBytesIndex, baseOffset)
 	assert.Nil(t, err)
@@ -29,7 +31,9 @@ func TestNewSegment_EmptyIndexFile(t *testing.T) {
 func TestNewSegment_NotEmptyIndexFile(t *testing.T) {
 	// from not an empty index file
 	var baseOffset uint64 = 100
-	dirpath := getTempDir(test_segment_dir)
+	dirpath, err := getTempDir(test_segment_dir)
+	assert.Nil(t, err)
+
 	tempfilepath := path.Join(dirpath, "100.index")
 	tempfile, err := os.OpenFile(tempfilepath, os.O_CREATE, 0666)
 	assert.Nil(t, err)
@@ -45,8 +49,10 @@ func TestNewSegment_NotEmptyIndexFile(t *testing.T) {
 }
 
 func TestSegmentIsFull(t *testing.T) {
-	dirpath := getTempDir(test_segment_dir)
+	dirpath, err := getTempDir(test_segment_dir)
+	assert.Nil(t, err)
 	defer removeTempDir(dirpath)
+
 	var baseOffset uint64 = 0
 	var smaxBytes uint64 = 0 // trigger the Full
 	var idxmaxBytes uint64 = 10
@@ -57,8 +63,10 @@ func TestSegmentIsFull(t *testing.T) {
 }
 
 func TestGet_indexPath_storagePath(t *testing.T) {
-	dirpath := getTempDir(test_segment_dir)
+	dirpath, err := getTempDir(test_segment_dir)
+	assert.Nil(t, err)
 	defer removeTempDir(dirpath)
+
 	var baseOffset uint64 = 0
 	seg, err := NewSegment(dirpath, DefaultMaxBytesStore, DefaultMaxBytesIndex, baseOffset)
 	assert.Nil(t, err)
@@ -80,12 +88,15 @@ type SegmentTestData struct {
 }
 
 func TestSegmentBasicAppend(t *testing.T) {
-	dirpath := getTempDir(test_segment_dir)
+	dirpath, err := getTempDir(test_segment_dir)
+	assert.Nil(t, err)
 	defer removeTempDir(dirpath)
+
 	var baseOffset uint64 = 0
 	seg, err := NewSegment(dirpath, DefaultMaxBytesStore, DefaultMaxBytesStore, baseOffset)
 	assert.Nil(t, err)
 	seg.setIsActive(true)
+
 	testcases := []SegmentTestData{
 		{[]byte("Hello Word"), baseOffset},
 		{[]byte("Second Hello"), baseOffset + 1},
@@ -102,12 +113,15 @@ func TestSegmentBasicAppend(t *testing.T) {
 }
 
 func TestSegmentBasicRead(t *testing.T) {
-	dirpath := getTempDir(test_segment_dir)
+	dirpath, err := getTempDir(test_segment_dir)
+	assert.Nil(t, err)
 	defer removeTempDir(dirpath)
+
 	var baseOffset uint64 = 100
 	seg, err := NewSegment(dirpath, DefaultMaxBytesStore, DefaultMaxBytesStore, baseOffset)
 	assert.Nil(t, err)
 	seg.setIsActive(true)
+
 	testcases := []SegmentTestData{
 		{[]byte("Hello Word"), baseOffset},       // 100
 		{[]byte("Second Hello"), baseOffset + 1}, // 101
