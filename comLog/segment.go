@@ -244,7 +244,7 @@ func (seg *Segment) Close() error {
 func (seg *Segment) Remove() error {
 	// After closing the segment any pending IO operation will be canceled and return immediatly with an os.ErrClosed error.
 	// That's why we release the lock at this stage to let the other IO operations/goroutines (read, append,...)
-	// to get immediatly their responses without any delay. The response can also of type os.PathError error if files are removed
+	// to get immediatly their responses without any delay. The response can be also of type os.PathError error if files are removed
 	// before the IO operations get to be applied.
 	err := seg.Close()
 

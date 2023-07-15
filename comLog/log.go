@@ -39,7 +39,7 @@ type Log struct {
 	Config
 	mu sync.RWMutex
 	// Data segements represented by the store and index
-	segments []*Segment // TODO(storage): garbage collection based on checkpoint
+	segments []*Segment
 	// The active segment on which the current writes will take place
 	vactiveSegment atomic.Value // TODO(performance): check atomic Pointer (*: Store is a bit faster but the Load is not)
 }
@@ -317,9 +317,72 @@ func (log *Log) SegmentsSize() int {
 	return len(log.segments)
 }
 
-// CollectSegements deletes log segements that contains records older than the given offset.
-// It acts as a segment garbage collector for the log.
+// LastOffset returns the last tracked offset i.e. the newset offset so far.
+func (log *Log) LastOffset() uint64 {
+	return log.loadActiveSeg().getNextOffset()
+}
+
+// OldestOffset returns the oldest tracked offset so far. If the `CollectSegments` never get triggered or after collecting
+// all the segments the oldest offset in this case should be equal 0.
+func (log *Log) OldestOffset() uint64 {
+	log.mu.RLock()
+	defer log.mu.RUnlock()
+	return log.segments[0].baseOffset
+}
+
+// CollectSegments deletes log segements containing records older than the given offset.
+// It acts as a segment garbage collector for the log. If there are no segments left, CollectSegments will setup the log again
+// so we can have the active segment ready.
 func (log *Log) CollectSegments(offset uint64) error {
-	// TODO
+	log.mu.Lock()
+	defer log.mu.Unlock()
+
+	newSegments := make([]*Segment, 0, len(log.segments))
+
+	errCh := make(chan error, len(log.segments))
+	done := make(chan struct{})
+	delSegs := 0
+
+	for i := 0; i < len(log.segments); i++ {
+		if log.segments[i].baseOffset < offset {
+			delSegs++
+			go func(i int) {
+				select {
+				case <-done:
+					return
+
+				default:
+					err := log.segments[i].Remove()
+					select {
+					case <-done:
+						return
+					case errCh <- err:
+					}
+				}
+			}(i)
+
+		} else {
+			newSegments = append(newSegments, log.segments[i])
+		}
+
+	}
+
+	for i := 0; i < delSegs; i++ {
+		err := <-errCh
+		if err != nil {
+			close(done)
+			return fmt.Errorf("the collect segments operation failed. "+
+				"The log may contain segements pointing to files that no longer exist in the log data directory. "+
+				"To recover from this failure, the log must be setup again from the current log data directory: %s. "+
+				"Original error: %w", log.Data_dir, err)
+		}
+	}
+
+	log.segments = newSegments
+	if len(log.segments) == 0 {
+		// all segments are removed, so we need to setup the log again
+		return log.setup()
+	}
+
 	return nil
 }

@@ -2,8 +2,11 @@ package comLog
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
 )
+
+const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 func getTempfile(dir, filename string) (*os.File, error) {
 	return os.CreateTemp(dir, filename)
@@ -33,4 +36,12 @@ func removeTempDir(dirpath string) {
 	if err != nil {
 		fmt.Printf("Cannot remove the temporory directory %s, try to remove it later\n", dirpath)
 	}
+}
+
+func generateRandomRecord(n int) []byte {
+	record := make([]byte, n)
+	for i := 0; i < n; i++ {
+		record[i] = letters[rand.Int63()%int64(len(letters))]
+	}
+	return record
 }
