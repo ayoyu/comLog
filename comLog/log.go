@@ -15,6 +15,7 @@ var (
 	ConfigError       = errors.New("configuration error")
 	LogOutOfRange     = errors.New("no record exists with the given offset")
 	LogNotImplemented = errors.New("the operation is not supported")
+	SetupError        = errors.New("log setup failed, try to fix the issue and run it again")
 )
 
 // Log configuration. Be aware that the OS have a limit called "the Operating System File Descriptor Limit" that will constrain
@@ -39,7 +40,7 @@ type Log struct {
 	Config
 	mu sync.RWMutex
 	// Data segements represented by the store and index
-	segments []*Segment // TODO(storage): garbage collection based on checkpoint
+	segments []*Segment
 	// The active segment on which the current writes will take place
 	vactiveSegment atomic.Value // TODO(performance): check atomic Pointer (*: Store is a bit faster but the Load is not)
 }
@@ -74,7 +75,7 @@ func (log *Log) setup() error {
 	)
 	entries, err = os.ReadDir(log.Data_dir)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w. Original Err: %w", SetupError, err)
 	}
 
 	var (
@@ -86,7 +87,7 @@ func (log *Log) setup() error {
 	for _, entry := range entries {
 		fileInfo, err = entry.Info()
 		if err != nil {
-			return err
+			return fmt.Errorf("%w. Original Err: %w", SetupError, err)
 		}
 		// will take baseOffset info only from storeFile
 		// the existance of the indexFile that goes with the specific storeFile
@@ -95,8 +96,9 @@ func (log *Log) setup() error {
 			baseOffsetStr = strings.TrimSuffix(fileInfo.Name(), storeFileSuffix)
 			baseOffset, err = strconv.Atoi(baseOffsetStr)
 			if err != nil {
-				return err
+				return fmt.Errorf("%w. Original Err: %w", SetupError, err)
 			}
+
 			baseOffsets = append(baseOffsets, uint64(baseOffset))
 		}
 
@@ -111,24 +113,27 @@ func (log *Log) setup() error {
 			return baseOffsets[i] < baseOffsets[j]
 		})
 
-		for _, baseoffset := range baseOffsets {
-			seg, err = NewSegment(log.Data_dir, log.StoreMaxBytes, log.IndexMaxBytes, baseoffset)
+		for _, base := range baseOffsets {
+			seg, err = NewSegment(log.Data_dir, log.StoreMaxBytes, log.IndexMaxBytes, base)
 			if err != nil {
-				return err
+				return fmt.Errorf("%w. Original Err: %w", SetupError, err)
 			}
+
 			log.segments = append(log.segments, seg)
 		}
+
 	} else {
 		// first segment with InitOffset=0
 		seg, err = NewSegment(log.Data_dir, log.StoreMaxBytes, log.IndexMaxBytes, 0)
 		if err != nil {
-			return err
+			return fmt.Errorf("%w. Original Err: %w", SetupError, err)
 		}
 		log.segments = append(log.segments, seg)
 	}
 
 	log.segments[len(log.segments)-1].setIsActive(true)
 	log.vactiveSegment.Store(log.segments[len(log.segments)-1])
+
 	return nil
 }
 
@@ -141,8 +146,8 @@ func (log *Log) loadActiveSeg() *Segment {
 func (log *Log) createNewActiveSeg() error {
 	var oldSegment *Segment = log.loadActiveSeg()
 	oldSegment.setIsActive(false)
-	// Implicit flush for the old segment
-	err := oldSegment.Flush(IndexMMAP_ASYNC)
+	// Implicit async flush for the old segment
+	err := oldSegment.Flush(INDEX_MMAP_ASYNC)
 	if err != nil {
 		return err
 	}
@@ -255,10 +260,11 @@ func (log *Log) Read(offset int64) (nn int, record []byte, err error) {
 	return nn, record, nil
 }
 
-// Explicit Flush/Commit the log flushes the active segment.
-// The index file mmap linked to the active segment can be flushed synchronously or asynchronously.
-func (log *Log) Flush(indexMMAP_Sync IndexSync) error {
-	return log.loadActiveSeg().Flush(indexMMAP_Sync)
+// Explicit Flush/Commit of the log by flushing the active segment (old segments are already flushed to disk).
+// The idxSyncType parameter specifies wheter flushing should be done synchronously or asynchronously regarding the index
+// mmap linked to the active segment.
+func (log *Log) Flush(idxSyncType IndexSyncType) error {
+	return log.loadActiveSeg().Flush(idxSyncType)
 }
 
 // Close the Log. It will close all segemnts it was able to close until an error occur or not.
@@ -316,7 +322,72 @@ func (log *Log) SegmentsSize() int {
 	return len(log.segments)
 }
 
+// LastOffset returns the last tracked offset i.e. the newset offset so far.
+func (log *Log) LastOffset() uint64 {
+	return log.loadActiveSeg().getNextOffset()
+}
+
+// OldestOffset returns the oldest tracked offset so far. If the `CollectSegments` never get triggered or after collecting
+// all the segments the oldest offset in this case should be equal 0.
+func (log *Log) OldestOffset() uint64 {
+	log.mu.RLock()
+	defer log.mu.RUnlock()
+	return log.segments[0].baseOffset
+}
+
+// CollectSegments deletes log segements containing records older than the given offset.
+// It acts as a segment garbage collector for the log. If there are no segments left, CollectSegments will setup the log again
+// so we can have the active segment ready.
 func (log *Log) CollectSegments(offset uint64) error {
-	// TODO
+	log.mu.Lock()
+	defer log.mu.Unlock()
+
+	newSegments := make([]*Segment, 0, len(log.segments))
+
+	errCh := make(chan error, len(log.segments))
+	done := make(chan struct{})
+	delSegs := 0
+
+	for i := 0; i < len(log.segments); i++ {
+		if log.segments[i].baseOffset < offset {
+			delSegs++
+			go func(i int) {
+				select {
+				case <-done:
+					return
+
+				default:
+					err := log.segments[i].Remove()
+					select {
+					case <-done:
+						return
+					case errCh <- err:
+					}
+				}
+			}(i)
+
+		} else {
+			newSegments = append(newSegments, log.segments[i])
+		}
+
+	}
+
+	for i := 0; i < delSegs; i++ {
+		err := <-errCh
+		if err != nil {
+			close(done)
+			return fmt.Errorf("the collect segments operation failed. "+
+				"The log may contain segements pointing to files that no longer exist in the log data directory. "+
+				"To recover from this failure, the log must be setup again from the current log data directory: %s. "+
+				"Original error: %w", log.Data_dir, err)
+		}
+	}
+
+	log.segments = newSegments
+	if len(log.segments) == 0 {
+		// all segments are removed, so we need to setup the log again
+		return log.setup()
+	}
+
 	return nil
 }

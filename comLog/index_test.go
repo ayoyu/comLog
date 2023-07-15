@@ -12,7 +12,10 @@ var DefaultMaxBytesIndex uint64 = 4096
 const test_index_file = "test_index_file_"
 
 func getIndex(maxbytes uint64) (*index, error) {
-	file := getTempfile("", test_index_file)
+	file, err := getTempfile("", test_index_file)
+	if err != nil {
+		return nil, err
+	}
 	index, err := newIndex(file, maxbytes)
 	if err != nil {
 		return nil, err
@@ -21,9 +24,12 @@ func getIndex(maxbytes uint64) (*index, error) {
 }
 
 func TestNewIndex(t *testing.T) {
-	file := getTempfile("", test_index_file)
-	fileInfo := getFileInfo(file) // before Truncate the file (realSize)
+	file, err := getTempfile("", test_index_file)
+	assert.Nil(t, err)
+	fileInfo, err := getFileInfo(file) // before Truncate the file (realSize)
+	assert.Nil(t, err)
 	assert.NotEqual(t, fileInfo.Size(), DefaultMaxBytesIndex)
+
 	index, err := newIndex(file, DefaultMaxBytesIndex)
 	assert.Nil(t, err)
 	assert.Equal(t, int64(index.size), fileInfo.Size())
@@ -137,8 +143,11 @@ func TestIndexNbrOfIndexes(t *testing.T) {
 func TestIndexClose(t *testing.T) {
 	index, err := getIndex(DefaultMaxBytesIndex)
 	assert.Nil(t, err)
-	fileInfo := getFileInfo(index.file) // after(NewIndex) Truncate the file
+
+	fileInfo, err := getFileInfo(index.file) // after(NewIndex) Truncate the file
+	assert.Nil(t, err)
 	assert.Equal(t, fileInfo.Size(), int64(DefaultMaxBytesIndex))
+
 	// write some entries to test the Sync/Flush/Truncate
 	testcases := []IndexDataTestCases{
 		{0, 43}, {1, 60}, {2, 99},
@@ -150,9 +159,11 @@ func TestIndexClose(t *testing.T) {
 	err = index.close() // will truncate the file to real size = lastSize
 	assert.Nil(t, err)
 
-	reopenFile, err := reopenClosedFile(index.name())
+	reopenClosedFile, err := openFile(index.name())
 	assert.Nil(t, err)
-	reopenFileInfo := getFileInfo(reopenFile)
+
+	reopenFileInfo, err := getFileInfo(reopenClosedFile)
+	assert.Nil(t, err)
 	assert.Equal(t, reopenFileInfo.Size(), lastSize)
 	// remove the temp test data
 	removeTempFile(index.file.Name())

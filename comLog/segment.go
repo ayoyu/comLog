@@ -17,11 +17,11 @@ const (
 	segContext      = "[segment]: "
 )
 
-type IndexSync uint8
+type IndexSyncType uint8
 
 const (
-	IndexMMAP_SYNC IndexSync = iota
-	IndexMMAP_ASYNC
+	INDEX_MMAP_SYNC IndexSyncType = iota
+	INDEX_MMAP_ASYNC
 )
 
 var NotActiveAnymore = errors.New("abort append, the pointed Segment is not active anymore")
@@ -29,13 +29,24 @@ var NotActiveAnymore = errors.New("abort append, the pointed Segment is not acti
 // The Segment structure that holds the pair index-store files.
 // It maintains the base Offset and keep track of the next Offset.
 type Segment struct {
-	mu         sync.RWMutex
-	storeFile  *store
-	indexFile  *index
-	baseOffset uint64 // will be set from the previous segment nextOffset
+	mu        sync.RWMutex
+	storeFile *store
+	indexFile *index
+	// Specifies the first (or base) offset in the segment related to a record.
+	// It will be set from the previous segment nextOffset
+	baseOffset uint64
+	// Represents the next offset where the future record can be stored
 	nextOffset uint64
-	path       string
-	isActive   bool
+	// The log data dir
+	path string
+	// Indicates wheter a segment is still the active segment or not anymore. Any segment when it get created
+	// it will active at the current time.
+	isActive bool
+	// Indicates wheter a segment is closed or not for append operations. For read operations the closed signal can
+	// be indicated directly from the closed underlying file store, but for append operations (append happens only on the active segment)
+	// because we write into memory buffers (store buffer and index mmap) we cannot tell if the segment is closed or not
+	// until we hit a read operation (read will flush before reading).
+	closedForAppend bool
 }
 
 /*
@@ -119,6 +130,10 @@ func (seg *Segment) Append(record []byte) (currOffset uint64, nn int, err error)
 	seg.mu.Lock()
 	defer seg.mu.Unlock()
 
+	if seg.closedForAppend {
+		return 0, 0, os.ErrClosed
+	}
+
 	if !seg.isActive {
 		return 0, 0, NotActiveAnymore
 	}
@@ -180,9 +195,9 @@ func (seg *Segment) Read(offset int64) (nn int, record []byte, err error) {
 	return nn, record, nil
 }
 
-// Flush/Explicit Commit to flush back the store buffer to disk and synchronize synchronously or asynchronously
+// Flush/Commit the segment to flush back the store buffer to disk and synchronize synchronously or asynchronously
 // the index mmap region with the underlying file.
-func (seg *Segment) Flush(indexMMAPSync IndexSync) error {
+func (seg *Segment) Flush(idxSyncType IndexSyncType) error {
 	seg.mu.Lock()
 	defer seg.mu.Unlock()
 	var err error
@@ -191,11 +206,11 @@ func (seg *Segment) Flush(indexMMAPSync IndexSync) error {
 		return fmt.Errorf(segContext+"Failed to flush the store buffer. Err: %w", err)
 	}
 
-	switch indexMMAPSync {
-	case IndexMMAP_ASYNC:
+	switch idxSyncType {
+	case INDEX_MMAP_ASYNC:
 		err = seg.indexFile.mmap.Sync(gommap.MS_ASYNC)
 
-	case IndexMMAP_SYNC:
+	case INDEX_MMAP_SYNC:
 		err = seg.indexFile.mmap.Sync(gommap.MS_SYNC)
 	}
 
@@ -209,6 +224,8 @@ func (seg *Segment) Flush(indexMMAPSync IndexSync) error {
 func (seg *Segment) Close() error {
 	seg.mu.Lock()
 	defer seg.mu.Unlock()
+
+	seg.closedForAppend = true
 
 	err := seg.indexFile.close()
 	if err != nil {
@@ -225,8 +242,14 @@ func (seg *Segment) Close() error {
 
 // Remove the segment by removing the store and index files
 func (seg *Segment) Remove() error {
+	// After closing the segment any pending IO operation will be canceled and return immediatly with an os.ErrClosed error.
+	// That's why we release the lock at this stage to let the other IO operations/goroutines (read, append,...)
+	// to get immediatly their responses without any delay. The response can be also of type os.PathError error if files are removed
+	// before the IO operations get to be applied.
 	err := seg.Close()
 
+	seg.mu.Lock()
+	defer seg.mu.Unlock()
 	if err == nil {
 		if err = os.Remove(seg.storeFile.name()); err != nil {
 			return fmt.Errorf(segContext+"Failed to remove store file %s. Err: %w", seg.storeFile.name(), err)
@@ -239,8 +262,7 @@ func (seg *Segment) Remove() error {
 	return err
 }
 
-// ReadAt reads from the corresponding position in the store file linked to the segment and put it
-// in the given buffer
+// ReadAt reads from the given position in the store file linked to the segment and put it in the given buffer.
 func (seg *Segment) ReadAt(buf []byte, position uint64) (nn int, err error) {
 	seg.mu.RLock()
 	defer seg.mu.RUnlock()

@@ -1,13 +1,17 @@
 package main
 
 /*
-Example to use the comLog package and to test also thread(goroutine) safety of the database from data race
+Example to use the comLog package and to test also thread(goroutine) safety of the database from data race.
+
+This example is just a draft of experiments so don't consider it as a tutorial example,
+it will get removed later and more useful examples will get added.
 */
 import (
 	"fmt"
 	"math/rand"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/ayoyu/comLog/comLog"
 )
@@ -106,7 +110,7 @@ func LogMixAppendReadWorkLoad(verbose bool) error {
 	return nil
 }
 
-func LogAppendWorkLoad(verbose bool) error {
+func MixWorkLoad(verbose bool) error {
 	// Append and Flush are Concurrnents
 	// The read will be at the end in sync mode to check results
 	log_dir, err := os.MkdirTemp("", "test_bench")
@@ -127,13 +131,29 @@ func LogAppendWorkLoad(verbose bool) error {
 			// make periodic explicit flush of the log
 			wait.Add(1)
 			go func() {
-				err := log.Flush(comLog.IndexMMAP_SYNC)
+				err := log.Flush(comLog.INDEX_MMAP_SYNC)
 				if err != nil && verbose {
 					fmt.Println("???????????????????????? Log Flush/Commit error", err)
 				}
 				wait.Done()
 			}()
+
+			wait.Add(1)
+			go func(i int) {
+				defer wait.Done()
+				select {
+				case <-time.After(time.Millisecond * 100):
+					// this operation of printing the 2 metrics is not atomic i.e. log.LastOffset() can return a response
+					// but it doesn't mean that it is synchronize with what the log.SegmentsSize() get us as response
+					// the Lock that was holded during log.SegmentsSize() can be given to other operations before the
+					// log.LastOffset() get it and return a response.
+					fmt.Printf("[Monitoring %d] Nbr of segments: %d, Last Offset %d, OldestOffset: %d\n",
+						i, log.SegmentsSize(), log.LastOffset(), log.OldestOffset())
+				}
+
+			}(i)
 		}
+
 		wait.Add(1)
 		go func() {
 			// Append
@@ -155,7 +175,7 @@ func LogAppendWorkLoad(verbose bool) error {
 	// Read back appended records
 	fmt.Println()
 	if verbose {
-		fmt.Println("Results: ")
+		fmt.Printf("[Results] The final number of segemnts: %d \n", log.SegmentsSize())
 	}
 	var arr []TestLogData_2
 	for i := 0; i < Size; i++ {
@@ -223,6 +243,6 @@ func LogAppendWorkLoad(verbose bool) error {
 }
 
 func main() {
-	LogAppendWorkLoad(true)
+	MixWorkLoad(true)
 	// LogMixAppendReadWorkLoad(true)
 }
