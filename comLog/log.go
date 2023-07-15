@@ -15,6 +15,7 @@ var (
 	ConfigError       = errors.New("configuration error")
 	LogOutOfRange     = errors.New("no record exists with the given offset")
 	LogNotImplemented = errors.New("the operation is not supported")
+	SetupError        = errors.New("log setup failed, try to fix the issue and run it again")
 )
 
 // Log configuration. Be aware that the OS have a limit called "the Operating System File Descriptor Limit" that will constrain
@@ -74,7 +75,7 @@ func (log *Log) setup() error {
 	)
 	entries, err = os.ReadDir(log.Data_dir)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w. Original Err: %w", SetupError, err)
 	}
 
 	var (
@@ -86,7 +87,7 @@ func (log *Log) setup() error {
 	for _, entry := range entries {
 		fileInfo, err = entry.Info()
 		if err != nil {
-			return err
+			return fmt.Errorf("%w. Original Err: %w", SetupError, err)
 		}
 		// will take baseOffset info only from storeFile
 		// the existance of the indexFile that goes with the specific storeFile
@@ -95,8 +96,9 @@ func (log *Log) setup() error {
 			baseOffsetStr = strings.TrimSuffix(fileInfo.Name(), storeFileSuffix)
 			baseOffset, err = strconv.Atoi(baseOffsetStr)
 			if err != nil {
-				return err
+				return fmt.Errorf("%w. Original Err: %w", SetupError, err)
 			}
+
 			baseOffsets = append(baseOffsets, uint64(baseOffset))
 		}
 
@@ -111,24 +113,27 @@ func (log *Log) setup() error {
 			return baseOffsets[i] < baseOffsets[j]
 		})
 
-		for _, baseoffset := range baseOffsets {
-			seg, err = NewSegment(log.Data_dir, log.StoreMaxBytes, log.IndexMaxBytes, baseoffset)
+		for _, base := range baseOffsets {
+			seg, err = NewSegment(log.Data_dir, log.StoreMaxBytes, log.IndexMaxBytes, base)
 			if err != nil {
-				return err
+				return fmt.Errorf("%w. Original Err: %w", SetupError, err)
 			}
+
 			log.segments = append(log.segments, seg)
 		}
+
 	} else {
 		// first segment with InitOffset=0
 		seg, err = NewSegment(log.Data_dir, log.StoreMaxBytes, log.IndexMaxBytes, 0)
 		if err != nil {
-			return err
+			return fmt.Errorf("%w. Original Err: %w", SetupError, err)
 		}
 		log.segments = append(log.segments, seg)
 	}
 
 	log.segments[len(log.segments)-1].setIsActive(true)
 	log.vactiveSegment.Store(log.segments[len(log.segments)-1])
+
 	return nil
 }
 
