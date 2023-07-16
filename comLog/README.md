@@ -2,9 +2,9 @@
 
 ## Quick start
 
-#### Append a record
+#### Append Records
 
-- Append the record `[]byte("Hello World")` and receive the `offset: uint64` of the record, or also what is called the log sequence number (LSN) https://pgpedia.info/l/LSN-log-sequence-number.html in the WAL databases terminology https://pgpedia.info/w/wal-write-ahead-logging.html
+- Append the record and receive its `offset: uint64`, or also what is called the log sequence number (LSN) https://pgpedia.info/l/LSN-log-sequence-number.html in the WAL databases terminology https://pgpedia.info/w/wal-write-ahead-logging.html
 
 ```golang
 package main
@@ -15,90 +15,149 @@ import (
 	"github.com/ayoyu/comLog/comLog"
 )
 
-const log_dir string = "/The_name_of_data_log_directory/"
-const StoreMaxBytes_ uint64 = 4096
-const IndexMaxBytes_ uint64 = 4096
+const (
+	log_dir       string = "/tmp_dir" // don't forget to mkdir the directory
+	StoreMaxBytes uint64 = 4096
+	IndexMaxBytes uint64 = 4096
+)
 
 func main() {
-	var conf comLog.Config = comLog.Config{Data_dir: log_dir, StoreMaxBytes: StoreMaxBytes_, IndexMaxBytes: IndexMaxBytes_}
+	var conf comLog.Config = comLog.Config{
+		Data_dir:      log_dir,
+		StoreMaxBytes: StoreMaxBytes,
+		IndexMaxBytes: IndexMaxBytes,
+	}
 	var (
 		err error
 		log *comLog.Log
 	)
 	log, err = comLog.NewLog(conf)
 	if err != nil {
-		panic("Error during log setup")
+		panic(err.Error())
 	}
+	// Closing the log
+	defer func() {
+		if err := log.Close(); err != nil {
+			panic(err.Error())
+		}
+	}()
+
 	var (
 		offset uint64
 		nn     int
 	)
-	offset, nn, err = log.Append([]byte("Hello World"))
-	if err != nil {
-		fmt.Println("Append Error %w", err)
-	} else {
-		fmt.Println("Nbr of bytes written: ", nn, "|| offset: ", offset)
-	}
 	offset, nn, err = log.Append(
 		[]byte(`{
 			"name": "value",
 			"type": "record",
 			"fields": [{"name": "user_id","type": "int"},{"name": "gender","type": "string"}]
 		}`))
+
+	if err != nil {
+		fmt.Printf("Append Error %v\n", err)
+	} else {
+		fmt.Printf("Offset: %v, Nbr of written bytes: %v\n", offset, nn)
+	}
 }
 ```
 
 #### Explicit Flush/Commit
 
-- Flush the log buffers (index and store) of the active segment. The index mmap region will be synchronized asynchronously with the underlying file.
+- Flush explicitly the log buffers (index and store) of the active segment. The `idxSyncType` parameter specifies wheter flushing should be done synchronously or asynchronously regarding the index mmap linked to the active segment.
 
 ```golang
-var err error = log.Flush()
-if err != nil {
-	fmt.Println("Error Flushing the log", err)
+if err := log.Flush(comLog.INDEX_MMAP_ASYNC); err != nil {
+	panic(err.Error())
 }
 ```
 
-#### Read a record:
+```golang
+if err := log.Flush(comLog.INDEX_MMAP_SYNC); err != nil {
+	panic(err.Error())
+}
+```
 
-- Example 1: (the offset from above example)
+#### Read Records:
 
-Read back the bytes record given its offset.
+- Read a record with the given `offset: uint64`
 
 ```golang
-// the offset from the append example
 var (
+	nn int
 	record []byte
 	err error
-	nn int
 )
+// Read with the offset from the append example
 nn, record, err = log.Read(int64(offset))
 if err != nil {
-	fmt.Println("Read Error", err)
+	fmt.Printf("Read Error %v\n", err)
 } else {
-	fmt.Println("Nbr of bytes readed: ", nn, "|| record: ", record)
+	fmt.Printf("Record: %v\n, Nbr of read bytes: %v\n", string(record), nn)
 }
 ```
 
-- Example 2:
-
-Read the last record written at a certain time.
+- Polling the last written record at a certain time with `offset=-1`
 
 ```golang
 var (
+	nn int
 	record []byte
 	err error
-	nn int
 )
 nn, record, err = log.Read(-1)
 if err != nil {
-	fmt.Errorf("Read Error %w", err)
+	fmt.Printf("Polling Error %v\n", err)
 } else {
-	fmt.Println("Nbr of bytes readed: ", nn, "|| Last record: ", record)
+	fmt.Printf("Record: %v\n, Nbr of read bytes: %v\n", string(record), nn)
 }
 ```
 
-Note: The read operation will make an implicit flush operation of the records buffer, before reading.
+Note: The read operation will make an implicit flush of the records store buffer, before reading.
+
+#### Useful information about the status of the commit log:
+
+- The current number of segments aka history + active segment, The oldest offset and the last tracked offset
+
+```golang
+fmt.Printf("The current nbr of segments: %d\n", log.SegmentsSize())
+fmt.Printf("The oldest offset: %d\n", log.OldestOffset())
+fmt.Printf("The last (newest) offset: %d\n", log.LastOffset())
+```
+
+#### Truncate commit log:
+
+- To collect old segments based on some retention policy,...etc
+
+```golang
+if err := log.CollectSegments(47); err != nil {
+	panic(err.Error())
+}
+fmt.Printf("After segments collection, the current nbr of segments : %d\n", log.SegmentsSize())
+fmt.Printf("After segments collection, the oldest offset: %d\n", log.OldestOffset())
+fmt.Printf("After segments collection, the last (newest) offset: %d\n", log.LastOffset())
+```
+
+NOTE: If the collect operation **deleted all segments**, the log will still be ready to receive read and write operations because the log will automatically create the new segment (i.e. the first segment).
+
+- Remove completly the commit log
+
+NOTE: This operation is different from the `CollectSegments` as it will **remove definitely** the log data directory, which means if another operation comes after you will receive a `no such file or directory` error.
+
+```golang
+if err := log.Remove(); err != nil {
+	panic(err.Error())
+}
+```
+
+#### Close the commit log:
+
+It is always a good practice to close your resources before finishing, in this case it is very important to close the commit log to ensure the correctness and consistency of the state of the log for the next configuration/setup.
+
+```golang
+if err := log.Close(); err != nil {
+	panic(err.Error())
+}
+```
 
 ### File format
 
