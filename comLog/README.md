@@ -79,7 +79,7 @@ if err := log.Flush(comLog.INDEX_MMAP_SYNC); err != nil {
 
 #### Read Records:
 
-- Read a record with the given `offset: uint64`
+- Read a record with the given `offset: int64`
 
 ```golang
 var (

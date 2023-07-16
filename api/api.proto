@@ -19,7 +19,7 @@ message Offset {
 
 message ReadRecordResp {
     bytes record            = 1;
-    int64 nbrOfReadBytes = 2;
+    int64 nbrOfReadBytes    = 2;
 }
 
 service ComLogRpc {

@@ -20,7 +20,7 @@ What is a commitLog ? some resources to check out if you are curious:
 
 ## Quick start
 
-#### The Library Usage: [README](comLog/README.md)
+#### The Library Usage: [Library README](comLog/README.md)
 
 ## Tasks:
 
