@@ -179,3 +179,24 @@ $ file 0.store
 $ file 0.index
 0.index: data
 ```
+
+## Benchmarks
+
+```Shell
+$ make run_benchmarks
+go test -benchmem -bench=. ./benchmarks
+goos: linux
+goarch: amd64
+pkg: github.com/ayoyu/comLog/benchmarks
+cpu: Intel(R) Core(TM) i5-9300H CPU @ 2.40GHz
+BenchmarkLog_ReadOnly_After_Bulk_Writes-8              	 2858198	       394.9 ns/op	      16 B/op	       1 allocs/op
+BenchmarkLog_Write_WorkLoad_For_Record_Length_10-8     	 1000000	      1223 ns/op	      26 B/op	       1 allocs/op
+BenchmarkLog_Write_WorkLoad_For_Record_Length_50-8     	  603902	      2108 ns/op	      67 B/op	       1 allocs/op
+BenchmarkLog_Write_WorkLoad_For_Record_Length_200-8    	  240582	      5116 ns/op	     220 B/op	       1 allocs/op
+BenchmarkLog_Write_Read_WorkLoad_Record_Length_10-8    	   57232	     19382 ns/op	      41 B/op	       2 allocs/op
+BenchmarkLog_Write_Read_WorkLoad_Record_Length_50-8    	   61903	     18209 ns/op	     130 B/op	       2 allocs/op
+BenchmarkLog_Write_Read_WorkLoad_Record_Length_200-8   	   56301	     21540 ns/op	     428 B/op	       2 allocs/op
+PASS
+ok  	github.com/ayoyu/comLog/benchmarks	9.613s
+
+```

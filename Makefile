@@ -37,3 +37,7 @@ default_server:
 
 help_server:
 	go run server/cmd/main.go --help
+
+
+run_benchmarks:
+	go test -benchmem -bench=. ./benchmarks
