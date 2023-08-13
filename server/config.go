@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	DefaultMaxRequestBytes = 1.5 * 1024 * 1024
+	DefaultMaxRecvMsgSizeBytes = 4 * 1024 * 1024 // gRPC default to 4 MB
 
 	DefaultMaxConcurrentStreams = math.MaxUint32
 

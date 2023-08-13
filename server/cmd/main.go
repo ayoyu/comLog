@@ -21,7 +21,7 @@ var (
 	OPT_KEY_FILE  = flag.String("key-file", "", "(Optional) The TLS key file if tls is true.")
 
 	// grpc call options
-	OPT_MAX_REQ_BYTES = flag.Int("max-request-bytes", server.DefaultMaxRequestBytes, "(Optional) Maximum client request size in bytes the server will accept.")
+	OPT_MAX_REQ_BYTES = flag.Int("max-request-bytes", server.DefaultMaxRecvMsgSizeBytes, "(Optional) Maximum client request size in bytes the server will accept.")
 
 	// grpc keep alive options
 	OPT_GRPC_ENFORCE_KEEP_ALIVE_MIN_TIME      = flag.Duration("grpc-keepalive-enforce-min-time", server.DefaultGRPCEnforceKeepAliveMinTime, "(Optional) Minimum interval duration that a client should wait before pinging server.")
@@ -29,7 +29,7 @@ var (
 	OPT_GRPC_KEEP_ALIVE_INTERVAL              = flag.Duration("grpc-keepalive-interval", server.DefaultGRPCKeepAliveInterval, "(Optional) Frequency duration of server-to-client ping to check if a connection is alive from the client side.")
 	OPT_GRPC_KEEP_ALIVE_TIMEOUT               = flag.Duration("grpc-keepalive-timeout", server.DefaultGRPCKeepAliveTimeout, "(Optional) Additional duration of wait before closing a non-responsive connection.")
 
-	OPT_MAX_CONCURRENT_STREAMS = flag.Int("max-concurrent-streams", server.DefaultMaxConcurrentStreams, "(Optional) Maximum concurrent streams that each client can open at a time.")
+	OPT_MAX_CONCURRENT_STREAMS = flag.Uint("max-concurrent-streams", server.DefaultMaxConcurrentStreams, "(Optional) Maximum concurrent streams that each client can open at a time.")
 
 	// commit log config
 	LOG_DATA_DIR            = flag.String("log-data-dir", "", "The log data file system directory")
@@ -74,7 +74,10 @@ func newGrpcServer() (*grpc.Server, error) {
 				// gRPC default is 20 seconds
 				Timeout: *OPT_GRPC_KEEP_ALIVE_TIMEOUT,
 			},
-		))
+		),
+		grpc.MaxConcurrentStreams(uint32(*OPT_MAX_CONCURRENT_STREAMS)),
+		grpc.MaxRecvMsgSize(*OPT_MAX_REQ_BYTES),
+	)
 
 	grpcServer := grpc.NewServer(opts...)
 	return grpcServer, nil
