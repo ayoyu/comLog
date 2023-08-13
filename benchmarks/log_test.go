@@ -9,10 +9,12 @@ import (
 	"github.com/ayoyu/comLog/comLog"
 )
 
-const StoreMaxBytes uint64 = 65536
-const IndexMaxBytes uint64 = 65536
-const letters string = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-const countItems int = 8000
+const (
+	storeMaxBytes uint64 = 65536
+	indexMaxBytes uint64 = 65536
+	letters       string = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	countItems    int    = 8000
+)
 
 type TestRecord struct {
 	Content []byte
@@ -32,7 +34,11 @@ func BenchmarkLog_ReadOnly_After_Bulk_Writes(b *testing.B) {
 	if err != nil {
 		b.Error(err)
 	}
-	var conf comLog.Config = comLog.Config{Data_dir: log_dir, StoreMaxBytes: StoreMaxBytes, IndexMaxBytes: IndexMaxBytes}
+	var conf comLog.Config = comLog.Config{
+		Data_dir:      log_dir,
+		StoreMaxBytes: storeMaxBytes,
+		IndexMaxBytes: indexMaxBytes,
+	}
 	log, err := comLog.NewLog(conf)
 	if err != nil {
 		b.Error(err)
@@ -72,7 +78,11 @@ func Log_Write_WorkLoad_Record_Length(b *testing.B, length int) {
 	if err != nil {
 		b.Error(err)
 	}
-	var conf comLog.Config = comLog.Config{Data_dir: log_dir, StoreMaxBytes: StoreMaxBytes, IndexMaxBytes: IndexMaxBytes}
+	var conf comLog.Config = comLog.Config{
+		Data_dir:      log_dir,
+		StoreMaxBytes: storeMaxBytes,
+		IndexMaxBytes: indexMaxBytes,
+	}
 	log, err := comLog.NewLog(conf)
 	if err != nil {
 		b.Error(err)
@@ -98,7 +108,11 @@ func Log_Write_Read_WorkLoad_Record_Length(b *testing.B, length int) {
 	if err != nil {
 		b.Error(err)
 	}
-	var conf comLog.Config = comLog.Config{Data_dir: log_dir, StoreMaxBytes: StoreMaxBytes, IndexMaxBytes: IndexMaxBytes}
+	var conf comLog.Config = comLog.Config{
+		Data_dir:      log_dir,
+		StoreMaxBytes: storeMaxBytes,
+		IndexMaxBytes: indexMaxBytes,
+	}
 	log, err := comLog.NewLog(conf)
 	if err != nil {
 		b.Error(err)
