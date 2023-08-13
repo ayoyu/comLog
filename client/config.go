@@ -72,6 +72,8 @@ var (
 	// Make sure that "client-side send limit < server-side default send/recv limit".
 	// Same value as "embed.DefaultMaxRequestBytes" plus gRPC overhead bytes.
 	// gRPC default is math.MaxInt32. Our default is 2MB as the max Record.Data size to Append.
+	//
+	// The value of `defaultmaxSendMsgSize` is the same value as "server.DefaultMaxRequestBytes" + gRPC overhead bytes
 	defaultMaxCallSendMsgSize = grpc.MaxCallSendMsgSize(defaultmaxSendMsgSize)
 
 	// Client-side response receive limit in bytes.

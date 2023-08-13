@@ -20,7 +20,20 @@ run_server:
 		mkdir ${DEV_LOG_DATA_DIR}; \
 	fi
 
-	go run server/server.go --log_data_dir ${DEV_LOG_DATA_DIR} \
-	--log_store_max_bytes ${DEV_STORE_MAX_BYTES} \
-	--log_index_max_bytes ${DEV_INDEX_MAX_BYTES} \
+	go run server/cmd/main.go --log-data-dir ${DEV_LOG_DATA_DIR} \
+	--log-store-max-bytes ${DEV_STORE_MAX_BYTES} \
+	--log-index-max-bytes ${DEV_INDEX_MAX_BYTES} \
 	--tls ${DEV_LOG_USE_TLS}
+
+
+default_server:
+	if [ ! -d "${DEV_LOG_DATA_DIR}" ]; then \
+		echo "Creating the log data direcotory ${DEV_LOG_DATA_DIR}..."; \
+		mkdir ${DEV_LOG_DATA_DIR}; \
+	fi
+
+	go run server/cmd/main.go --log-data-dir ${DEV_LOG_DATA_DIR}
+
+
+help_server:
+	go run server/cmd/main.go --help
