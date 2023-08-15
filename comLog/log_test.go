@@ -134,7 +134,7 @@ func TestLogSegmentSearch(t *testing.T) {
 		6:  log.segments[0],
 		20: log.segments[2],
 		31: log.segments[3],
-		-1: log.segments[3], // last seg
+		-1: log.segments[3], // last seg (valid offset)
 		40: nil,
 		55: nil,
 	}
@@ -234,4 +234,32 @@ func TestSuccessfulCollectSegments(t *testing.T) {
 	assert.Equal(t, helloOffset, uint64(0))
 	assert.Equal(t, log.LastOffset(), helloOffset+1, "The last offset should be equal 1")
 	assert.Equal(t, log.OldestOffset(), uint64(0), "The oldset offset should be equal 0")
+}
+
+func TestInvalidOffsetArgumentErr(t *testing.T) {
+	log_dir, err := getTempDir(TEST_LOG_DIR)
+	assert.Nil(t, err)
+	defer removeTempDir(log_dir)
+
+	conf := createConfig(log_dir, 0, 0)
+	log, err := NewLog(conf)
+	assert.Nil(t, err)
+
+	_, _, err = log.Read(-2)
+	t.Logf("Invalid Offset Argument: %s", err)
+	assert.True(t, errors.Is(err, InvalidOffsetArgError))
+}
+
+func TestOutOfRangeErr(t *testing.T) {
+	log_dir, err := getTempDir(TEST_LOG_DIR)
+	assert.Nil(t, err)
+	defer removeTempDir(log_dir)
+
+	conf := createConfig(log_dir, 0, 0)
+	log, err := NewLog(conf)
+	assert.Nil(t, err)
+
+	_, _, err = log.Read(10)
+	t.Logf("Out Of Range Offset: %s", err)
+	assert.True(t, errors.Is(err, OutOfRangeError))
 }
