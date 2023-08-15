@@ -8,6 +8,9 @@ import (
 	"syscall"
 
 	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 
 	pb "github.com/ayoyu/comLog/api"
 	"github.com/ayoyu/comLog/comLog"
@@ -109,4 +112,16 @@ func (s *ComLogServer) Read(ctx context.Context, offset *pb.Offset) (*pb.ReadRec
 		Record:         record,
 		NbrOfReadBytes: int64(nn),
 	}, nil
+}
+
+func (s *ComLogServer) Flush(context.Context, *pb.IndexFlushSyncType) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Flush not implemented")
+}
+
+func (s *ComLogServer) GetMetaData(context.Context, *emptypb.Empty) (*pb.LogMetaData, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetMetaData not implemented")
+}
+
+func (s *ComLogServer) CollectSegments(context.Context, *pb.CollectOffset) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CollectSegments not implemented")
 }

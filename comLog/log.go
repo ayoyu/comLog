@@ -263,8 +263,8 @@ func (log *Log) Read(offset int64) (nn int, record []byte, err error) {
 // Explicit Flush/Commit of the log by flushing the active segment (old segments are already flushed to disk).
 // The idxSyncType parameter specifies wheter flushing should be done synchronously or asynchronously regarding the index
 // mmap linked to the active segment.
-func (log *Log) Flush(idxSyncType IndexSyncType) error {
-	return log.loadActiveSeg().Flush(idxSyncType)
+func (log *Log) Flush(typ IndexSyncType) error {
+	return log.loadActiveSeg().Flush(typ)
 }
 
 // Close the Log. It will close all segemnts it was able to close until an error occur or not.
