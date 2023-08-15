@@ -178,4 +178,6 @@ type options struct {
 	dialKeepAliveTime    time.Duration
 	dialKeepAliveTimeout time.Duration
 	permitWithoutStream  bool
+	// blocking dial
+	dialBlock bool
 }

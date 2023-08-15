@@ -1,5 +1,7 @@
 syntax="proto3";
 
+import "google/protobuf/empty.proto";
+
 package api;
 
 option go_package = "github.com/ayoyu/comLog/api";
@@ -22,8 +24,32 @@ message ReadRecordResp {
     int64 nbrOfReadBytes    = 2;
 }
 
+message IndexFlushSyncType {
+    enum Type {
+        INDEX_MMAP_SYNC  = 0;
+        INDEX_MMAP_ASYNC = 1;
+    }
+    Type value = 1;
+}
+
+message LogMetaData {
+    int64 segmentsSize  = 1;
+    uint64 oldestOffset = 2;
+    uint64 lastOffset   = 3;
+}
+
+message CollectOffset {
+    uint64 value = 1;
+}
+
 service ComLogRpc {
     rpc Append(Record) returns (AppendRecordResp) {}
 
     rpc Read(Offset) returns (ReadRecordResp) {}
+
+    rpc Flush(IndexFlushSyncType) returns (google.protobuf.Empty) {}
+
+    rpc GetMetaData(google.protobuf.Empty) returns (LogMetaData) {}
+
+    rpc CollectSegments(CollectOffset) returns (google.protobuf.Empty) {}
 }

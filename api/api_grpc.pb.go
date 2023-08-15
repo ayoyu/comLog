@@ -7,6 +7,7 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -20,6 +21,9 @@ const _ = grpc.SupportPackageIsVersion7
 type ComLogRpcClient interface {
 	Append(ctx context.Context, in *Record, opts ...grpc.CallOption) (*AppendRecordResp, error)
 	Read(ctx context.Context, in *Offset, opts ...grpc.CallOption) (*ReadRecordResp, error)
+	Flush(ctx context.Context, in *IndexFlushSyncType, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	GetMetaData(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*LogMetaData, error)
+	CollectSegments(ctx context.Context, in *CollectOffset, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type comLogRpcClient struct {
@@ -48,12 +52,42 @@ func (c *comLogRpcClient) Read(ctx context.Context, in *Offset, opts ...grpc.Cal
 	return out, nil
 }
 
+func (c *comLogRpcClient) Flush(ctx context.Context, in *IndexFlushSyncType, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, "/api.ComLogRpc/Flush", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *comLogRpcClient) GetMetaData(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*LogMetaData, error) {
+	out := new(LogMetaData)
+	err := c.cc.Invoke(ctx, "/api.ComLogRpc/GetMetaData", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *comLogRpcClient) CollectSegments(ctx context.Context, in *CollectOffset, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, "/api.ComLogRpc/CollectSegments", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ComLogRpcServer is the server API for ComLogRpc service.
 // All implementations must embed UnimplementedComLogRpcServer
 // for forward compatibility
 type ComLogRpcServer interface {
 	Append(context.Context, *Record) (*AppendRecordResp, error)
 	Read(context.Context, *Offset) (*ReadRecordResp, error)
+	Flush(context.Context, *IndexFlushSyncType) (*emptypb.Empty, error)
+	GetMetaData(context.Context, *emptypb.Empty) (*LogMetaData, error)
+	CollectSegments(context.Context, *CollectOffset) (*emptypb.Empty, error)
 	mustEmbedUnimplementedComLogRpcServer()
 }
 
@@ -66,6 +100,15 @@ func (UnimplementedComLogRpcServer) Append(context.Context, *Record) (*AppendRec
 }
 func (UnimplementedComLogRpcServer) Read(context.Context, *Offset) (*ReadRecordResp, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Read not implemented")
+}
+func (UnimplementedComLogRpcServer) Flush(context.Context, *IndexFlushSyncType) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Flush not implemented")
+}
+func (UnimplementedComLogRpcServer) GetMetaData(context.Context, *emptypb.Empty) (*LogMetaData, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetMetaData not implemented")
+}
+func (UnimplementedComLogRpcServer) CollectSegments(context.Context, *CollectOffset) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CollectSegments not implemented")
 }
 func (UnimplementedComLogRpcServer) mustEmbedUnimplementedComLogRpcServer() {}
 
@@ -116,6 +159,60 @@ func _ComLogRpc_Read_Handler(srv interface{}, ctx context.Context, dec func(inte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ComLogRpc_Flush_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(IndexFlushSyncType)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComLogRpcServer).Flush(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.ComLogRpc/Flush",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComLogRpcServer).Flush(ctx, req.(*IndexFlushSyncType))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ComLogRpc_GetMetaData_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComLogRpcServer).GetMetaData(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.ComLogRpc/GetMetaData",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComLogRpcServer).GetMetaData(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ComLogRpc_CollectSegments_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CollectOffset)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComLogRpcServer).CollectSegments(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.ComLogRpc/CollectSegments",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComLogRpcServer).CollectSegments(ctx, req.(*CollectOffset))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ComLogRpc_ServiceDesc is the grpc.ServiceDesc for ComLogRpc service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -130,6 +227,18 @@ var ComLogRpc_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Read",
 			Handler:    _ComLogRpc_Read_Handler,
+		},
+		{
+			MethodName: "Flush",
+			Handler:    _ComLogRpc_Flush_Handler,
+		},
+		{
+			MethodName: "GetMetaData",
+			Handler:    _ComLogRpc_GetMetaData_Handler,
+		},
+		{
+			MethodName: "CollectSegments",
+			Handler:    _ComLogRpc_CollectSegments_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

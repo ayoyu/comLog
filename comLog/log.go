@@ -12,10 +12,10 @@ import (
 )
 
 var (
-	ConfigError       = errors.New("configuration error")
-	LogOutOfRange     = errors.New("no record exists with the given offset")
-	LogNotImplemented = errors.New("the operation is not supported")
-	SetupError        = errors.New("log setup failed, try to fix the issue and run it again")
+	ConfigError           = errors.New("configuration error")
+	OutOfRangeError       = errors.New("no record exists with the given offset")
+	InvalidOffsetArgError = errors.New("the given offset must be greater than or equal to -1")
+	SetupError            = errors.New("log setup failed, try to fix the issue and run it again")
 )
 
 // Log configuration. Be aware that the OS have a limit called "the Operating System File Descriptor Limit" that will constrain
@@ -245,12 +245,12 @@ func (log *Log) segmentSearch(offset int64) *Segment {
 // the number of bytes read and an error if any.
 func (log *Log) Read(offset int64) (nn int, record []byte, err error) {
 	if offset < -1 {
-		return 0, nil, LogNotImplemented
+		return 0, nil, InvalidOffsetArgError
 	}
 
 	var targetSegment *Segment = log.segmentSearch(offset)
 	if targetSegment == nil {
-		return 0, nil, LogOutOfRange
+		return 0, nil, OutOfRangeError
 	}
 
 	nn, record, err = targetSegment.Read(offset)
@@ -263,8 +263,8 @@ func (log *Log) Read(offset int64) (nn int, record []byte, err error) {
 // Explicit Flush/Commit of the log by flushing the active segment (old segments are already flushed to disk).
 // The idxSyncType parameter specifies wheter flushing should be done synchronously or asynchronously regarding the index
 // mmap linked to the active segment.
-func (log *Log) Flush(idxSyncType IndexSyncType) error {
-	return log.loadActiveSeg().Flush(idxSyncType)
+func (log *Log) Flush(typ IndexSyncType) error {
+	return log.loadActiveSeg().Flush(typ)
 }
 
 // Close the Log. It will close all segemnts it was able to close until an error occur or not.
