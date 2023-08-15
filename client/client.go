@@ -79,9 +79,23 @@ func WithTLS(rootCAFile, serverNameOverride string) Option {
 }
 
 // WithDialTimeout configures the timeout for failing to establish a dial connection with the server.
+// This is valid if and only if WithBlock() is present, if dial is non-blocking the timeout will be ignored.
 func WithDialTimeout(timeout time.Duration) Option {
 	return func(c *Client) error {
 		c.dialTimeout = timeout
+		return nil
+	}
+}
+
+// WithDialBlock makes the Dial operation block until the
+// underlying connection is up. Without this, Dial returns immediately and
+// connecting the server happens in background.
+//
+// Use of this feature is not recommended. For more information, please see:
+// https://github.com/grpc/grpc-go/blob/master/Documentation/anti-patterns.md
+func WithDialBlock() Option {
+	return func(c *Client) error {
+		c.dialBlock = true
 		return nil
 	}
 }
@@ -150,6 +164,10 @@ func (c *Client) addDialOpts() {
 			PermitWithoutStream: c.permitWithoutStream,
 		}
 		c.dialOpts = append(c.dialOpts, grpc.WithKeepaliveParams(params))
+	}
+
+	if c.dialBlock {
+		c.dialOpts = append(c.dialOpts, grpc.WithBlock())
 	}
 }
 
