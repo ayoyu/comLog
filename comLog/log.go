@@ -18,12 +18,14 @@ var (
 	SetupError            = errors.New("log setup failed, try to fix the issue and run it again")
 )
 
-// Log configuration. Be aware that the OS have a limit called "the Operating System File Descriptor Limit" that will constrain
-// the maximum number of file descriptors the process has. "Too many open files error" can happen when a process needs
-// to open more files than the operating system allows, this limits can constrain how many concurrent requests the server
-// can handle. Practically in order to avoid this behavior, you must think of a reasonable `StoreMaxBytes` capacity based
-// on the nature of the records you are appending, and also have a background/scheduled thread to run `CollectSegments`
-// in order to truncate the the Log based on some offset. Increasing the operating system file descriptor limit can also be an option.
+// Config represents the Log configuration. Be aware that the OS have a limit called "the Operating System File Descriptor Limit"
+// that will constrain the maximum number of file descriptors the process has. "Too many open files error" can happen when
+// a process needs to open more files than the operating system allows, this limits can constrain how many concurrent requests
+// the server can handle.
+// Practically in order to avoid this behavior, you must think of a reasonable `StoreMaxBytes` capacity based
+// on the nature of the records you are appending, and also have a background scheduled thread to run `CollectSegments`
+// in order to truncate the the Log based on some offset.
+// Increasing the operating system file descriptor limit can also be an option.
 type Config struct {
 	// File system directory where the physical store and index files will be stored
 	Data_dir string

@@ -182,9 +182,9 @@ func MixWorkLoad(verbose bool) error {
 		t := <-res
 		if t.err != nil {
 			if verbose {
-				fmt.Println("????????????????????????? Error occur during Append", t.err, "...continue")
+				fmt.Println("????????????????????????? Error occur during Append", t.err)
 			}
-			continue
+			return t.err
 		}
 		_, rr, err := log.Read(int64(t.offset))
 		if err != nil {
@@ -199,7 +199,7 @@ func MixWorkLoad(verbose bool) error {
 				fmt.Println("<!><!><!><!><!><!><!><!><!><!><!> Found Incorrect data")
 				fmt.Println("Read offset: ", t.offset, "record readed back: ", string(rr), "!= stored record (Append): ", t.record)
 			}
-			return nil
+			return fmt.Errorf("(Second Time) Found Incorrect data")
 		}
 		if verbose {
 			fmt.Println("Read offset: ", t.offset, "record readed back: ", string(rr), "== stored record (Append): ", t.record)
@@ -232,7 +232,7 @@ func MixWorkLoad(verbose bool) error {
 				fmt.Println("<!><!><!><!><!><!><!><!><!><!><!>  (Second Time) Found Incorrect data")
 				fmt.Println("Read 2 offset: ", second.offset, "record_back_2: ", string(r2), "record_back: ", second.record_back, "original: ", second.original)
 			}
-			return nil
+			return fmt.Errorf("(Second Time) Found Incorrect data")
 		}
 		if verbose {
 			fmt.Println("(Second Time) offset: ", second.offset, "record_back2: ", string(r2), "record_back: ", second.record_back, "original: ", second.original)
@@ -243,6 +243,9 @@ func MixWorkLoad(verbose bool) error {
 }
 
 func main() {
-	MixWorkLoad(true)
+	err := MixWorkLoad(true)
+	if err != nil {
+		panic(err.Error())
+	}
 	// LogMixAppendReadWorkLoad(true)
 }
