@@ -106,9 +106,10 @@ func (s *ComLogServer) Read(ctx context.Context, offset *pb.Offset) (*pb.ReadRec
 
 	nn, record, err := s.log.Read(offset.Value)
 	if err != nil {
-		if errors.Is(err, comLog.OutOfRangeError) {
+		if errors.Is(err, comLog.SegOutOfRangeError) || errors.Is(err, comLog.IndexOutOfRangeError) {
 			return nil, status.Errorf(codes.OutOfRange, err.Error())
 		}
+
 		if errors.Is(err, comLog.InvalidOffsetArgError) {
 			return nil, status.Errorf(codes.InvalidArgument, err.Error())
 		}

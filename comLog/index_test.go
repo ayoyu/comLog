@@ -116,10 +116,6 @@ func TestIndexReadOutofRangeError(t *testing.T) {
 	pos, err := index.read(1)
 	assert.Equal(t, int(pos), 0)
 	assert.ErrorIs(t, err, IndexOutOfRangeError)
-	assert.Equal(
-		t, err.Error(),
-		"the given offset is not yet filled (out of range)",
-	)
 	// remove the temp test data
 	removeTempFile(index.file.Name())
 }

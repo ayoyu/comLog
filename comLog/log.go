@@ -13,7 +13,7 @@ import (
 
 var (
 	ConfigError           = errors.New("configuration error")
-	OutOfRangeError       = errors.New("no record exists with the given offset")
+	SegOutOfRangeError    = errors.New("no record exists with the given offset")
 	InvalidOffsetArgError = errors.New("the given offset must be greater than or equal to -1")
 	SetupError            = errors.New("log setup failed, try to fix the issue and run it again")
 )
@@ -252,7 +252,7 @@ func (log *Log) Read(offset int64) (nn int, record []byte, err error) {
 
 	var targetSegment *Segment = log.segmentSearch(offset)
 	if targetSegment == nil {
-		return 0, nil, OutOfRangeError
+		return 0, nil, SegOutOfRangeError
 	}
 
 	nn, record, err = targetSegment.Read(offset)
