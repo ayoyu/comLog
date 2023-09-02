@@ -19,10 +19,18 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ComLogRpcClient interface {
+	// Append sends the given record to the remote log server to be appended.
 	Append(ctx context.Context, in *Record, opts ...grpc.CallOption) (*AppendRecordResp, error)
+	// BatchAppend sends batch of record to the remote log server to be appended.
+	BatchAppend(ctx context.Context, in *BatchRecords, opts ...grpc.CallOption) (*BatchAppendResp, error)
+	// Read gets the record that corresponds to the given offset.
 	Read(ctx context.Context, in *Offset, opts ...grpc.CallOption) (*ReadRecordResp, error)
+	// Flush explicitly commit the log by flushing the active segment.
 	Flush(ctx context.Context, in *IndexFlushSyncType, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// GetMetaData returns information about the current state of the log, see `LogMetaData` message.
 	GetMetaData(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*LogMetaData, error)
+	// CollectSegments trigger the segment collection operation that will delete segments containing records
+	// older than the given offset.
 	CollectSegments(ctx context.Context, in *CollectOffset, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
@@ -37,6 +45,15 @@ func NewComLogRpcClient(cc grpc.ClientConnInterface) ComLogRpcClient {
 func (c *comLogRpcClient) Append(ctx context.Context, in *Record, opts ...grpc.CallOption) (*AppendRecordResp, error) {
 	out := new(AppendRecordResp)
 	err := c.cc.Invoke(ctx, "/api.ComLogRpc/Append", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *comLogRpcClient) BatchAppend(ctx context.Context, in *BatchRecords, opts ...grpc.CallOption) (*BatchAppendResp, error) {
+	out := new(BatchAppendResp)
+	err := c.cc.Invoke(ctx, "/api.ComLogRpc/BatchAppend", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -83,10 +100,18 @@ func (c *comLogRpcClient) CollectSegments(ctx context.Context, in *CollectOffset
 // All implementations must embed UnimplementedComLogRpcServer
 // for forward compatibility
 type ComLogRpcServer interface {
+	// Append sends the given record to the remote log server to be appended.
 	Append(context.Context, *Record) (*AppendRecordResp, error)
+	// BatchAppend sends batch of record to the remote log server to be appended.
+	BatchAppend(context.Context, *BatchRecords) (*BatchAppendResp, error)
+	// Read gets the record that corresponds to the given offset.
 	Read(context.Context, *Offset) (*ReadRecordResp, error)
+	// Flush explicitly commit the log by flushing the active segment.
 	Flush(context.Context, *IndexFlushSyncType) (*emptypb.Empty, error)
+	// GetMetaData returns information about the current state of the log, see `LogMetaData` message.
 	GetMetaData(context.Context, *emptypb.Empty) (*LogMetaData, error)
+	// CollectSegments trigger the segment collection operation that will delete segments containing records
+	// older than the given offset.
 	CollectSegments(context.Context, *CollectOffset) (*emptypb.Empty, error)
 	mustEmbedUnimplementedComLogRpcServer()
 }
@@ -97,6 +122,9 @@ type UnimplementedComLogRpcServer struct {
 
 func (UnimplementedComLogRpcServer) Append(context.Context, *Record) (*AppendRecordResp, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Append not implemented")
+}
+func (UnimplementedComLogRpcServer) BatchAppend(context.Context, *BatchRecords) (*BatchAppendResp, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method BatchAppend not implemented")
 }
 func (UnimplementedComLogRpcServer) Read(context.Context, *Offset) (*ReadRecordResp, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Read not implemented")
@@ -137,6 +165,24 @@ func _ComLogRpc_Append_Handler(srv interface{}, ctx context.Context, dec func(in
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ComLogRpcServer).Append(ctx, req.(*Record))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ComLogRpc_BatchAppend_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BatchRecords)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComLogRpcServer).BatchAppend(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.ComLogRpc/BatchAppend",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComLogRpcServer).BatchAppend(ctx, req.(*BatchRecords))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -223,6 +269,10 @@ var ComLogRpc_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Append",
 			Handler:    _ComLogRpc_Append_Handler,
+		},
+		{
+			MethodName: "BatchAppend",
+			Handler:    _ComLogRpc_BatchAppend_Handler,
 		},
 		{
 			MethodName: "Read",
