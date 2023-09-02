@@ -334,6 +334,12 @@ func (log *Log) LastOffset() uint64 {
 func (log *Log) OldestOffset() uint64 {
 	log.mu.RLock()
 	defer log.mu.RUnlock()
+	if len(log.segments) == 0 {
+		// Normally the `log.segments` slice should always have at leat one segment, even after calling
+		// the `CollectSegments`, if at the end all segments are collected the `log.setup` will be triggered
+		// to setup approprietly the log.
+		return 0
+	}
 	return log.segments[0].baseOffset
 }
 
