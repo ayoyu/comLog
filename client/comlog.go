@@ -2,29 +2,70 @@ package client
 
 import (
 	"context"
+	"sync"
 
 	pb "github.com/ayoyu/comLog/api"
 	"google.golang.org/grpc"
 )
 
 type (
-	// in(s) Request
+	// Record represents the record data in bytes to send to the log server to be appended.
 	Record pb.Record
+
+	// Offset represents the integer offset with which we can read a record from the log server.
 	Offset pb.Offset
 
-	// out(s) Request
+	// BatchRecords represents a batch of `Record` to send.
+	BatchRecord pb.BatchRecords
+
+	// AppendRecordResp represents the server response from appending a record.
+	// The `offset` indicates the offset at which the record was assigned in the log
+	// while the `nbrOfStoredBytes` indicates the number of bytes that were stored in the log.
 	AppendResponse pb.AppendRecordResp
-	ReadResponse   pb.ReadRecordResp
+
+	// BatchAppendResp represents the server response from appending a batch of records in the same rpc call.
+	BatchAppendResponse pb.BatchAppendResp
+
+	// ReadRecordResp represents the server response from reading a record.
+	// The `record` holds the actual record in bytes while the `nbrOfReadBytes` indicates
+	// the number of bytes that we were able to read.
+	ReadResponse pb.ReadRecordResp
 )
 
+// OnCompletionSendCallback is a callback function to be invoked when the asynchronous send operation is done.
+// Both the append response `AppendResponse` and the `err` error are the results from the rpc send operation.
+type OnCompletionSendCallback func(resp *AppendResponse, err error)
+
 type ComLogClient interface {
+	// Append synchronously sends a record to the remote log server. This operation will block waiting
+	// for the `AppendResponse` response from the server which specifies the offset to which the
+	// record was assigned and the number of bytes stored
 	Append(ctx context.Context, record *Record) (*AppendResponse, error)
+
+	// Send asynchronously sends a record to the remote log server and invoke the provided callback when
+	// the send has been acknowledged. This operation will not block and will return immediatly once the record
+	// has been added to the buffer of records waiting to be sent, this allow sending many records without blocking
+	// to wait for the server response.
+	// The send operation from the pending buffer will be performed in batch FIFO append mode.
+	Send(ctx context.Context, record *Record, callback OnCompletionSendCallback)
+
+	// BatchAppend synchronously sends a batch of records to the remote log server. This operation will block waiting
+	// for the `BatchAppendResponse` response from the server which represents a slice of `AppendResponse` containing
+	// the offset the record was assigned to and the number of bytes stored.
+	BatchAppend(ctx context.Context, records *BatchRecord) (*BatchAppendResponse, error)
+
+	// Read synchronously reads the record corresponding to the given offset. This operation will block
+	// waiting for the `ReadResponse` response from the server which includes the recod in bytes `[]byte`
+	// and the number of bytes we were able to read.
 	Read(ctx context.Context, offset *Offset) (*ReadResponse, error)
 }
 
 type comLogClient struct {
 	remote   pb.ComLogRpcClient
 	callOpts []grpc.CallOption
+
+	mu          sync.Mutex // will see if we need this mutex or not
+	pendingFifo []*Record
 }
 
 func NewClientComLog(c *Client) ComLogClient {
@@ -43,6 +84,12 @@ func (c *comLogClient) Append(ctx context.Context, record *Record) (*AppendRespo
 	}
 
 	return (*AppendResponse)(pb_out), nil
+}
+
+func (c *comLogClient) Send(ctx context.Context, record *Record, callback OnCompletionSendCallback) {}
+
+func (c *comLogClient) BatchAppend(ctx context.Context, records *BatchRecord) (*BatchAppendResponse, error) {
+	return nil, nil
 }
 
 func (c *comLogClient) Read(ctx context.Context, offset *Offset) (*ReadResponse, error) {
