@@ -99,6 +99,10 @@ func (s *ComLogServer) Append(ctx context.Context, record *pb.Record) (*pb.Appen
 	}, nil
 }
 
+func (s *ComLogServer) BatchAppend(ctx context.Context, records *pb.BatchRecords) (*pb.BatchAppendResp, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method BatchAppend not implemented")
+}
+
 func (s *ComLogServer) Read(ctx context.Context, offset *pb.Offset) (*pb.ReadRecordResp, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -122,8 +126,12 @@ func (s *ComLogServer) Read(ctx context.Context, offset *pb.Offset) (*pb.ReadRec
 	}, nil
 }
 
-func (s *ComLogServer) Flush(context.Context, *pb.IndexFlushSyncType) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Flush not implemented")
+func (s *ComLogServer) Flush(ctx context.Context, typ *pb.IndexFlushSyncType) (*emptypb.Empty, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	// mmap sync is the default
+	return nil, s.log.Flush(comLog.IndexSyncType(typ.Value))
 }
 
 func (s *ComLogServer) GetMetaData(context.Context, *emptypb.Empty) (*pb.LogMetaData, error) {
