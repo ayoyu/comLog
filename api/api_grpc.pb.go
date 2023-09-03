@@ -22,6 +22,11 @@ type ComLogRpcClient interface {
 	// Append sends the given record to the remote log server to be appended.
 	Append(ctx context.Context, in *Record, opts ...grpc.CallOption) (*AppendRecordResp, error)
 	// BatchAppend sends batch of record to the remote log server to be appended.
+	// Adding records will be applied asynchronously, meaning there is no guarantee that the order
+	// within the records in the batch will be respected in terms of the offset assigned to each record.
+	//
+	// If an error occurs while adding records, the batch operation will stop and return the records that
+	// have been successfully added so far with their original indexes in the batch and the error that caused the shutdown.
 	BatchAppend(ctx context.Context, in *BatchRecords, opts ...grpc.CallOption) (*BatchAppendResp, error)
 	// Read gets the record that corresponds to the given offset.
 	Read(ctx context.Context, in *Offset, opts ...grpc.CallOption) (*ReadRecordResp, error)
@@ -103,6 +108,11 @@ type ComLogRpcServer interface {
 	// Append sends the given record to the remote log server to be appended.
 	Append(context.Context, *Record) (*AppendRecordResp, error)
 	// BatchAppend sends batch of record to the remote log server to be appended.
+	// Adding records will be applied asynchronously, meaning there is no guarantee that the order
+	// within the records in the batch will be respected in terms of the offset assigned to each record.
+	//
+	// If an error occurs while adding records, the batch operation will stop and return the records that
+	// have been successfully added so far with their original indexes in the batch and the error that caused the shutdown.
 	BatchAppend(context.Context, *BatchRecords) (*BatchAppendResp, error)
 	// Read gets the record that corresponds to the given offset.
 	Read(context.Context, *Offset) (*ReadRecordResp, error)

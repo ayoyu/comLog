@@ -13,7 +13,7 @@ message Record {
 
 // BatchRecords represents a batch of `Record` to send. 
 message BatchRecords {
-    repeated Record data = 1;
+    repeated Record batch = 1;
 }
 
 // AppendRecordResp represents the server response from appending a record.
@@ -26,7 +26,17 @@ message AppendRecordResp {
 
 // BatchAppendResp represents the server response from appending a batch of records in the same rpc call. 
 message BatchAppendResp {
-    repeated AppendRecordResp response = 1;
+    message RespWithOrder {
+        // resp is the server append response of a record.
+        AppendRecordResp resp = 1;
+        // index indicates the original index of the record in the batch from where
+        // it was appended. This index can help the caller to identify the record that was
+        // successfully appended from the batch since the batch append operation is asynchronous
+        // which means it doesn't preserve the original order reflected in the returned offset.
+        int64 index = 2; 
+    }
+
+    repeated RespWithOrder response = 1;
 }
 
 // Offset represents the integer offset with which we can read a record from the log server.
@@ -72,6 +82,11 @@ service ComLogRpc {
     rpc Append(Record) returns (AppendRecordResp) {}
 
     // BatchAppend sends batch of record to the remote log server to be appended.
+    // Adding records will be applied asynchronously, meaning there is no guarantee that the order
+    // within the records in the batch will be respected in terms of the offset assigned to each record.
+    //
+    // If an error occurs while adding records, the batch operation will stop and return the records that
+    // have been successfully added so far with their original indexes in the batch and the error that caused the shutdown.
     rpc BatchAppend(BatchRecords) returns (BatchAppendResp) {}
 
     // Read gets the record that corresponds to the given offset. 

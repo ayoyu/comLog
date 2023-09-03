@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/signal"
 	"sync"
@@ -100,7 +101,62 @@ func (s *ComLogServer) Append(ctx context.Context, record *pb.Record) (*pb.Appen
 }
 
 func (s *ComLogServer) BatchAppend(ctx context.Context, records *pb.BatchRecords) (*pb.BatchAppendResp, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method BatchAppend not implemented")
+	done := make(chan struct{})
+
+	type callResp struct {
+		resp *pb.BatchAppendResp_RespWithOrder
+		err  error
+	}
+	resCh := make(chan callResp, len(records.Batch))
+
+	for i := 0; i < len(records.Batch); i++ {
+		go func(i int) {
+			select {
+			case <-done:
+				return
+
+			default:
+				offset, nn, err := s.log.Append(records.Batch[i].Data)
+				select {
+				case <-done:
+					return
+				case resCh <- callResp{
+					resp: &pb.BatchAppendResp_RespWithOrder{
+						Resp: &pb.AppendRecordResp{
+							Offset:           offset,
+							NbrOfStoredBytes: int64(nn),
+						},
+						Index: int64(i),
+					},
+					err: err,
+				}:
+				}
+			}
+		}(i)
+	}
+
+	results := make([]*pb.BatchAppendResp_RespWithOrder, 0, len(records.Batch))
+	var err error
+
+Loop:
+	for i := 0; i < len(records.Batch); i++ {
+		select {
+		case <-ctx.Done():
+			close(done)
+			err = ctx.Err()
+			break Loop
+
+		case res := <-resCh:
+			if res.err != nil {
+				close(done)
+				err = fmt.Errorf("failed appending record at index %d. Original error: %w", res.resp.Index, res.err)
+				break Loop
+			}
+			results = append(results, res.resp)
+		}
+	}
+
+	return &pb.BatchAppendResp{Response: results}, err
 }
 
 func (s *ComLogServer) Read(ctx context.Context, offset *pb.Offset) (*pb.ReadRecordResp, error) {
