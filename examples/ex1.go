@@ -3,7 +3,7 @@ package main
 /*
 Example to use the comLog package and to test also thread(goroutine) safety of the database from data race.
 
-This example is just a draft of experiments so don't consider it as a tutorial example,
+This example is just a draft of experiments so don't consider it as a tutorial example (To add later as test),
 it will get removed later and more useful examples will get added.
 */
 import (
@@ -142,7 +142,7 @@ func MixWorkLoad(verbose bool) error {
 			go func(i int) {
 				defer wait.Done()
 				select {
-				case <-time.After(time.Millisecond * 100):
+				case <-time.After(time.Millisecond * 5):
 					// this operation of printing the 2 metrics is not atomic i.e. log.LastOffset() can return a response
 					// but it doesn't mean that it is synchronize with what the log.SegmentsSize() get us as response
 					// the Lock that was holded during log.SegmentsSize() can be given to other operations before the

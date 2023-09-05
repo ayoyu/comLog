@@ -35,7 +35,7 @@ default_server:
 	go run server/cmd/main.go --log-data-dir ${DEV_LOG_DATA_DIR}
 
 
-help_server:
+server_help:
 	go run server/cmd/main.go --help
 
 

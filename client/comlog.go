@@ -47,11 +47,17 @@ type ComLogClient interface {
 	// has been added to the buffer of records waiting to be sent, this allow sending many records without blocking
 	// to wait for the server response.
 	// The send operation from the pending buffer will be performed in batch FIFO append mode.
+	//
+	// The callback will generally be executed in a background I/O goroutine that is responsible for turning these
+	// records into requests and transmitting them the remote log server, for this reason the callback should be fast
+	// enough to not delay the sending of messages to the server from other goroutines.
 	Send(ctx context.Context, record *Record, callback OnCompletionSendCallback)
 
-	// BatchAppend synchronously sends a batch of records to the remote log server. This operation will block waiting
-	// for the `BatchAppendResponse` response from the server which represents a slice of `AppendResponse` containing
-	// the offset the record was assigned to and the number of bytes stored.
+	// BatchAppend synchronously sends a batch of records to the remote log server.
+	// This operation will block waiting for the `BatchAppendResponse` response from the server which represents
+	// a slice of `pb.BatchAppendResp_RespWithOrder` containing the offset the record was assigned to, the number of
+	// bytes stored for each record and the original index of the record inside the batch to identify the record that
+	// was succefully appended since the batch append operation on the server side is asynchronous.
 	BatchAppend(ctx context.Context, records *BatchRecord) (*BatchAppendResponse, error)
 
 	// Read synchronously reads the record corresponding to the given offset. This operation will block
@@ -86,9 +92,12 @@ func (c *comLogClient) Append(ctx context.Context, record *Record) (*AppendRespo
 	return (*AppendResponse)(pb_out), nil
 }
 
-func (c *comLogClient) Send(ctx context.Context, record *Record, callback OnCompletionSendCallback) {}
+func (c *comLogClient) Send(ctx context.Context, record *Record, callback OnCompletionSendCallback) {
+	// TODO
+}
 
 func (c *comLogClient) BatchAppend(ctx context.Context, records *BatchRecord) (*BatchAppendResponse, error) {
+	// TODO
 	return nil, nil
 }
 

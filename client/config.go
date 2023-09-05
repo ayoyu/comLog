@@ -19,6 +19,10 @@ const (
 	mainRpcServiceName = "comLog.api.ComLogRpc"
 
 	defaultmaxSendMsgSize = 2 * 1024 * 1024
+
+	// 16*1024 similar to the default in kafka Producer.
+	// Ref: https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html#batch-size
+	defaultBatchSize = 16384
 )
 
 // Defaults gRPC Dial Options
@@ -163,21 +167,53 @@ type serviceConfig struct {
 	MethodCfg []*methodConfig `json:"methodConfig"`
 }
 
-type options struct {
-	// serviceCfgRawJSON used for retry policy
+type retryOption struct {
 	serviceCfgRawJSON string
-	// username and password are used for Auth option
+}
+
+type authOption struct {
 	username string
 	password string
-	// creds used for client-side tls
+}
+
+type tlsOption struct {
 	creds credentials.TransportCredentials
+}
+
+type callOption struct {
 	// maxCallSendMsgSize and maxCallRecvMsgSize are used to set the req/resp size limit
 	maxCallSendMsgSize int
 	maxCallRecvMsgSize int
-	// dialKeepAliveTime, dialKeepAliveTimeout and permitWithoutStream are used to set the keep-alive-probe
+}
+
+type dialOption struct {
+	dialTimeout time.Duration
+	dialBlock   bool
+}
+
+type keepAliveProbeOption struct {
 	dialKeepAliveTime    time.Duration
 	dialKeepAliveTimeout time.Duration
 	permitWithoutStream  bool
 	// blocking dial
 	dialBlock bool
+}
+
+type batchOption struct {
+	// The upper bound of the batch size to use for buffering records to be sent later.
+	// Default to 16384=16*1024
+	batchSize int
+	// The upper bound of time awaiting for other records to show up to fill the buffer in order
+	// to batch the maximum possible
+	linger time.Duration
+}
+
+type options struct {
+	retry retryOption
+	auth  authOption
+	tls   tlsOption
+	call  callOption
+	dial  dialOption
+	alive keepAliveProbeOption
+	batch batchOption
 }

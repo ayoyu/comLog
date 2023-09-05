@@ -101,7 +101,8 @@ func (s *ComLogServer) Append(ctx context.Context, record *pb.Record) (*pb.Appen
 }
 
 func (s *ComLogServer) BatchAppend(ctx context.Context, records *pb.BatchRecords) (*pb.BatchAppendResp, error) {
-	done := make(chan struct{})
+	ctx, cancelFunc := context.WithCancel(ctx)
+	defer cancelFunc()
 
 	type callResp struct {
 		resp *pb.BatchAppendResp_RespWithOrder
@@ -110,15 +111,15 @@ func (s *ComLogServer) BatchAppend(ctx context.Context, records *pb.BatchRecords
 	resCh := make(chan callResp, len(records.Batch))
 
 	for i := 0; i < len(records.Batch); i++ {
-		go func(i int) {
+		go func(cxt context.Context, i int) {
 			select {
-			case <-done:
+			case <-ctx.Done():
 				return
 
 			default:
 				offset, nn, err := s.log.Append(records.Batch[i].Data)
 				select {
-				case <-done:
+				case <-ctx.Done():
 					return
 				case resCh <- callResp{
 					resp: &pb.BatchAppendResp_RespWithOrder{
@@ -132,7 +133,7 @@ func (s *ComLogServer) BatchAppend(ctx context.Context, records *pb.BatchRecords
 				}:
 				}
 			}
-		}(i)
+		}(ctx, i)
 	}
 
 	results := make([]*pb.BatchAppendResp_RespWithOrder, 0, len(records.Batch))
@@ -142,13 +143,12 @@ Loop:
 	for i := 0; i < len(records.Batch); i++ {
 		select {
 		case <-ctx.Done():
-			close(done)
 			err = ctx.Err()
 			break Loop
 
 		case res := <-resCh:
 			if res.err != nil {
-				close(done)
+				// In case if any error we break and we cancel the other goroutines with the defered `cancelFunc`
 				err = fmt.Errorf("failed appending record at index %d. Original error: %w", res.resp.Index, res.err)
 				break Loop
 			}
