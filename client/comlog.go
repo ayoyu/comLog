@@ -10,26 +10,26 @@ import (
 
 type (
 	// Record represents the record data in bytes to send to the log server to be appended.
-	Record pb.Record
+	Record = pb.Record
 
 	// Offset represents the integer offset with which we can read a record from the log server.
-	Offset pb.Offset
+	Offset = pb.Offset
 
 	// BatchRecords represents a batch of `Record` to send.
-	BatchRecord pb.BatchRecords
+	BatchRecord = pb.BatchRecords
 
 	// AppendRecordResp represents the server response from appending a record.
 	// The `offset` indicates the offset at which the record was assigned in the log
 	// while the `nbrOfStoredBytes` indicates the number of bytes that were stored in the log.
-	AppendResponse pb.AppendRecordResp
+	AppendResponse = pb.AppendRecordResp
 
 	// BatchAppendResp represents the server response from appending a batch of records in the same rpc call.
-	BatchAppendResponse pb.BatchAppendResp
+	BatchAppendResponse = pb.BatchAppendResp
 
 	// ReadRecordResp represents the server response from reading a record.
 	// The `record` holds the actual record in bytes while the `nbrOfReadBytes` indicates
 	// the number of bytes that we were able to read.
-	ReadResponse pb.ReadRecordResp
+	ReadResponse = pb.ReadRecordResp
 )
 
 // OnCompletionSendCallback is a callback function to be invoked when the asynchronous send operation is done.
@@ -58,7 +58,12 @@ type ComLogClient interface {
 	// a slice of `pb.BatchAppendResp_RespWithOrder` containing the offset the record was assigned to, the number of
 	// bytes stored for each record and the original index of the record inside the batch to identify the record that
 	// was succefully appended since the batch append operation on the server side is asynchronous.
-	BatchAppend(ctx context.Context, records *BatchRecord) (*BatchAppendResponse, error)
+	//
+	// If an error occurs while appending records, the batch operation will stop and return the records that have been
+	// successfully stored so far with their original indexes in the batch and the error that caused the shutdown, which
+	// means in the worst case scenario where no record was successfully appended we can have a `BatchAppendResponse` with
+	// an empty slice and the first encountered error that caused this.
+	BatchAppend(ctx context.Context, batch *BatchRecord) (*BatchAppendResponse, error)
 
 	// Read synchronously reads the record corresponding to the given offset. This operation will block
 	// waiting for the `ReadResponse` response from the server which includes the recod in bytes `[]byte`
@@ -82,32 +87,27 @@ func NewClientComLog(c *Client) ComLogClient {
 }
 
 func (c *comLogClient) Append(ctx context.Context, record *Record) (*AppendResponse, error) {
-	pb_in := (*pb.Record)(record)
-
-	pb_out, err := c.remote.Append(ctx, pb_in, c.callOpts...)
+	pb_out, err := c.remote.Append(ctx, record, c.callOpts...)
 	if err != nil {
 		return nil, err
 	}
 
-	return (*AppendResponse)(pb_out), nil
+	return pb_out, nil
 }
 
 func (c *comLogClient) Send(ctx context.Context, record *Record, callback OnCompletionSendCallback) {
 	// TODO
 }
 
-func (c *comLogClient) BatchAppend(ctx context.Context, records *BatchRecord) (*BatchAppendResponse, error) {
-	// TODO
-	return nil, nil
+func (c *comLogClient) BatchAppend(ctx context.Context, batch *BatchRecord) (*BatchAppendResponse, error) {
+	return c.remote.BatchAppend(ctx, batch, c.callOpts...)
 }
 
 func (c *comLogClient) Read(ctx context.Context, offset *Offset) (*ReadResponse, error) {
-	pb_in := (*pb.Offset)(offset)
-
-	pb_out, err := c.remote.Read(ctx, pb_in, c.callOpts...)
+	pb_out, err := c.remote.Read(ctx, offset, c.callOpts...)
 	if err != nil {
 		return nil, err
 	}
 
-	return (*ReadResponse)(pb_out), nil
+	return pb_out, nil
 }
