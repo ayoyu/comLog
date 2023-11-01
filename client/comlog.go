@@ -2,7 +2,9 @@ package client
 
 import (
 	"context"
+	"io"
 	"sync"
+	"time"
 
 	pb "github.com/ayoyu/comLog/api"
 	"google.golang.org/grpc"
@@ -23,6 +25,10 @@ type (
 	// while the `nbrOfStoredBytes` indicates the number of bytes that were stored in the log.
 	AppendResponse = pb.AppendRecordResp
 
+	// SendAppendResponse represents the server response from appending a record from a batch
+	// append operation.
+	SendAppendResponse = pb.StreamAppendRecordResp
+
 	// BatchAppendResp represents the server response from appending a batch of records in the same rpc call.
 	BatchAppendResponse = pb.BatchAppendResp
 
@@ -33,8 +39,8 @@ type (
 )
 
 // OnCompletionSendCallback is a callback function to be invoked when the asynchronous send operation is done.
-// Both the append response `AppendResponse` and the `err` error are the results from the rpc send operation.
-type OnCompletionSendCallback func(resp *AppendResponse, err error)
+// It is recommended for the user to call wait.Done() at the end of the function to be able to track the running goroutines.
+type OnCompletionSendCallback func(resp *SendAppendResponse, wait *sync.WaitGroup)
 
 type ComLogClient interface {
 	// Append synchronously sends a record to the remote log server. This operation will block waiting
@@ -49,9 +55,9 @@ type ComLogClient interface {
 	// The send operation from the pending buffer will be performed in batch FIFO append mode.
 	//
 	// The callback will generally be executed in a background I/O goroutine that is responsible for turning these
-	// records into requests and transmitting them the remote log server, for this reason the callback should be fast
+	// records into requests and transmitting them to the remote log server, for this reason the callback should be fast
 	// enough to not delay the sending of messages to the server from other goroutines.
-	Send(ctx context.Context, record *Record, callback OnCompletionSendCallback)
+	Send(ctx context.Context, record *Record, callback OnCompletionSendCallback) error
 
 	// BatchAppend synchronously sends a batch of records to the remote log server.
 	// This operation will block waiting for the `BatchAppendResponse` response from the server which represents
@@ -71,19 +77,68 @@ type ComLogClient interface {
 	Read(ctx context.Context, offset *Offset) (*ReadResponse, error)
 }
 
+type callbacks struct {
+	mu    sync.RWMutex
+	store map[int]OnCompletionSendCallback
+}
+
+func newCallbacks(size int) *callbacks {
+	return &callbacks{store: make(map[int]OnCompletionSendCallback, size)}
+}
+
+func (c *callbacks) put(key int, val OnCompletionSendCallback) {
+	c.mu.Lock()
+	c.store[key] = val
+	c.mu.Unlock()
+}
+
+func (c *callbacks) get(key int) (OnCompletionSendCallback, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	val, ok := c.store[key]
+	return val, ok
+}
+
+func (c *callbacks) setStore(newStore map[int]OnCompletionSendCallback) {
+	c.mu.Lock()
+	for k, v := range newStore {
+		c.store[k] = v
+	}
+	c.mu.Unlock()
+}
+
 type comLogClient struct {
 	remote   pb.ComLogRpcClient
 	callOpts []grpc.CallOption
+	batchOpt batchOption
 
-	mu          sync.Mutex // will see if we need this mutex or not
-	pendingFifo []*Record
+	accumulator *recordAccumulator
+
+	prevcallbacks *callbacks
+	currcallbacks *callbacks
+
+	wait *sync.WaitGroup
+
+	closeCh   chan chan error
+	recvErrCh chan error
 }
 
 func NewClientComLog(c *Client) ComLogClient {
-	return &comLogClient{
-		remote:   pb.NewComLogRpcClient(c.conn),
-		callOpts: c.callOpts,
+	cli := &comLogClient{
+		remote:        pb.NewComLogRpcClient(c.conn),
+		callOpts:      c.callOpts,
+		batchOpt:      c.batch,
+		accumulator:   newRecordAccumulator(c.batch.batchSize),
+		prevcallbacks: newCallbacks(c.batch.batchSize),
+		currcallbacks: newCallbacks(c.batch.batchSize),
+		wait:          new(sync.WaitGroup),
+		closeCh:       make(chan chan error),
+		recvErrCh:     make(chan error, 1),
 	}
+
+	go cli.sendLoop()
+
+	return cli
 }
 
 func (c *comLogClient) Append(ctx context.Context, record *Record) (*AppendResponse, error) {
@@ -93,10 +148,6 @@ func (c *comLogClient) Append(ctx context.Context, record *Record) (*AppendRespo
 	}
 
 	return pb_out, nil
-}
-
-func (c *comLogClient) Send(ctx context.Context, record *Record, callback OnCompletionSendCallback) {
-	// TODO
 }
 
 func (c *comLogClient) BatchAppend(ctx context.Context, batch *BatchRecord) (*BatchAppendResponse, error) {
@@ -110,4 +161,101 @@ func (c *comLogClient) Read(ctx context.Context, offset *Offset) (*ReadResponse,
 	}
 
 	return pb_out, nil
+}
+
+func (c *comLogClient) Close() error {
+	errCh := make(chan error)
+	c.closeCh <- errCh
+
+	return <-errCh
+}
+
+func (c *comLogClient) sendBatch() error {
+	batch := c.accumulator.prepareRecordBatch()
+	stream, err := c.remote.StreamBatchAppend(context.TODO(), &batch, c.callOpts...)
+
+	if err != nil {
+		// TODO: Log the error status of not being able to send the batch record
+		c.accumulator.doneSending() <- struct{}{}
+		return err
+	}
+	// Once we set the prevcallbacks, the current callbacks can be overwritten when we
+	// send the doneSending signal to the accumulator. In this case the accumulator can contiue
+	// adding next record without blocking to wait for the whole stream receive operation
+	c.prevcallbacks.setStore(c.currcallbacks.store)
+	c.accumulator.doneSending() <- struct{}{}
+
+	// The stream receive operation
+	c.wait.Add(1)
+	go func() {
+		defer c.wait.Done()
+
+		sem := make(chan struct{}, 100) // TODO(?)
+		for {
+			resp, err := stream.Recv()
+			if err == io.EOF {
+				break
+			}
+
+			if err != nil {
+				c.recvErrCh <- err
+				break
+			}
+
+			callback, ok := c.prevcallbacks.get(int(resp.Index))
+
+			if ok {
+				sem <- struct{}{}
+				c.wait.Add(1)
+				go callback(resp, c.wait)
+				<-sem
+			}
+		}
+	}()
+
+	return nil
+}
+
+func (c *comLogClient) sendLoop() {
+	var (
+		lastErr          error
+		resetLingerTimer bool
+		waitLinger       <-chan time.Time
+	)
+
+	for {
+		if resetLingerTimer {
+			waitLinger = time.NewTimer(c.batchOpt.linger).C
+		}
+
+		select {
+		case err := <-c.recvErrCh:
+			lastErr = err
+			resetLingerTimer = false
+
+		case errCh := <-c.closeCh:
+			// TODO: Log the waiting status
+			c.wait.Wait()
+			errCh <- lastErr
+			return
+
+		case <-c.accumulator.startSending():
+			lastErr = c.sendBatch()
+			resetLingerTimer = true
+
+		case <-waitLinger:
+			lastErr = c.sendBatch()
+			resetLingerTimer = true
+		}
+	}
+}
+
+func (c *comLogClient) Send(ctx context.Context, record *Record, callback OnCompletionSendCallback) error {
+	offset, err := c.accumulator.append(ctx, record.Data)
+
+	if err == nil {
+		c.currcallbacks.put(offset, callback)
+	}
+
+	return err
 }

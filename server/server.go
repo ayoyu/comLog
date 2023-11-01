@@ -159,6 +159,60 @@ Loop:
 	return &pb.BatchAppendResp{Response: results}, err
 }
 
+func (s *ComLogServer) StreamBatchAppend(records *pb.BatchRecords, stream pb.ComLogRpc_StreamBatchAppendServer) error {
+	errCh := make(chan error, len(records.Batch))
+	done := make(chan struct{})
+
+	for i := 0; i < len(records.Batch); i++ {
+		go func(i int) {
+			var (
+				offset uint64
+				nn     int
+				err    error
+				errMsg string
+			)
+			select {
+			case <-done:
+				return
+			default:
+				offset, nn, err = s.log.Append(records.Batch[i].Data)
+			}
+
+			if err != nil {
+				errMsg = err.Error()
+			}
+
+			resp := pb.StreamAppendRecordResp{
+				Resp: &pb.AppendRecordResp{
+					Offset:           offset,
+					NbrOfStoredBytes: int64(nn),
+				},
+				Index:    int64(i),
+				ErrorMsg: errMsg,
+			}
+
+			select {
+			case <-done:
+				return
+			default:
+				err = stream.Send(&resp)
+				errCh <- err
+			}
+
+		}(i)
+	}
+
+	for i := 0; i < len(records.Batch); i++ {
+		err := <-errCh
+		if err != nil {
+			close(done)
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (s *ComLogServer) Read(ctx context.Context, offset *pb.Offset) (*pb.ReadRecordResp, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()

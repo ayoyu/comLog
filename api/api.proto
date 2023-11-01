@@ -24,6 +24,14 @@ message AppendRecordResp {
     int64 nbrOfStoredBytes = 2;
 }
 
+// StreamAppendRecordResp represents the server stream response from appending a record
+// from a batch append operation when using the `client.Send` api.
+message StreamAppendRecordResp {
+    AppendRecordResp resp = 1;
+    int64 index           = 2;
+    string errorMsg       = 3;
+}
+
 // BatchAppendResp represents the server response from appending a batch of records in the same rpc call. 
 message BatchAppendResp {
     message RespWithOrder {
@@ -81,13 +89,19 @@ service ComLogRpc {
     // Append sends the given record to the remote log server to be appended.
     rpc Append(Record) returns (AppendRecordResp) {}
 
-    // BatchAppend sends batch of record to the remote log server to be appended.
+    // BatchAppend sends batch of records to the remote log server to be appended.
     // Adding records will be applied asynchronously, meaning there is no guarantee that the order
     // within the records in the batch will be respected in terms of the offset assigned to each record.
     //
     // If an error occurs while adding records, the batch operation will stop and return the records that
     // have been successfully added so far with their original indexes in the batch and the error that caused the shutdown.
     rpc BatchAppend(BatchRecords) returns (BatchAppendResp) {}
+
+    // StreamBatchAppend sends batch of records to the remote log server to be appended.
+    // The server response are streamed rather than returned at once. The stream option offers the possibility
+    // to receive a detailed state about the record append on the log that make it possible to call
+    // the `client.OnCompletionSendCallback` on the append record result when using the `client.Send` api. 
+    rpc StreamBatchAppend(BatchRecords) returns (stream StreamAppendRecordResp) {}
 
     // Read gets the record that corresponds to the given offset. 
     rpc Read(Offset) returns (ReadRecordResp) {}
