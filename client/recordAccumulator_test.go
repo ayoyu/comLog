@@ -36,7 +36,7 @@ func TestAppend(t *testing.T) {
 
 	expectedLastOffset := 0
 	for _, c := range cases {
-		assert.Equal(t, accumulator.lastOffset, expectedLastOffset)
+		assert.Equal(t, int(accumulator.nextOffset.Load()), expectedLastOffset)
 
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(0))
 		offset, err := accumulator.append(ctx, c.record)
@@ -51,9 +51,9 @@ func TestAppend(t *testing.T) {
 		cancel()
 	}
 
-	assert.Equal(t, len(accumulator.index), 4)
+	assert.Equal(t, len(accumulator.indexes), 4)
 
-	for i, offset := range accumulator.index {
+	for i, offset := range accumulator.indexes {
 		data := accumulator.buf[offset.start:offset.end]
 		assert.Equal(t, data, cases[i].record)
 	}

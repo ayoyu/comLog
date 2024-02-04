@@ -123,24 +123,24 @@ type comLogClient struct {
 
 	wait *sync.WaitGroup
 
-	closeCh   chan chan error
-	recvErrCh chan error
+	closeCh         chan chan error
+	streamRecvErrCh chan error
 
 	lg *zap.Logger
 }
 
 func NewClientComLog(c *Client) ComLogClient {
 	cli := &comLogClient{
-		remote:        pb.NewComLogRpcClient(c.conn),
-		callOpts:      c.callOpts,
-		batchOpt:      c.batch,
-		accumulator:   newRecordAccumulator(c.batch.batchSize),
-		prevcallbacks: newCallbacks(c.batch.batchSize),
-		currcallbacks: newCallbacks(c.batch.batchSize),
-		wait:          new(sync.WaitGroup),
-		closeCh:       make(chan chan error),
-		recvErrCh:     make(chan error, 1),
-		lg:            c.lg,
+		remote:          pb.NewComLogRpcClient(c.conn),
+		callOpts:        c.callOpts,
+		batchOpt:        c.batch,
+		accumulator:     newRecordAccumulator(c.batch.batchSize),
+		prevcallbacks:   newCallbacks(c.batch.batchSize),
+		currcallbacks:   newCallbacks(c.batch.batchSize),
+		wait:            new(sync.WaitGroup),
+		closeCh:         make(chan chan error),
+		streamRecvErrCh: make(chan error, 1),
+		lg:              c.lg,
 	}
 
 	go cli.sendLoop()
@@ -179,19 +179,20 @@ func (c *comLogClient) Close() error {
 
 func (c *comLogClient) sendBatch() error {
 	batch := c.accumulator.prepareRecordBatch()
-	stream, err := c.remote.StreamBatchAppend(context.TODO(), &batch, c.callOpts...)
+	if len(batch.Batch) == 0 {
+		c.lg.Info("Nothing to send, the accumulator records batch is empty")
+		return nil
+	}
 
+	stream, err := c.remote.StreamBatchAppend(context.TODO(), &batch, c.callOpts...)
 	if err != nil {
 		c.lg.Error("Failed to send the stream batch records", zap.Error(err))
-
-		c.accumulator.doneSending() <- struct{}{}
 		return err
 	}
 	// Once we set the prevcallbacks, the current callbacks can be overwritten when we
 	// send the doneSending signal to the accumulator. In this case the accumulator can contiue
 	// adding next record without blocking to wait for the whole stream receive operation
 	c.prevcallbacks.setStore(c.currcallbacks.store)
-	c.accumulator.doneSending() <- struct{}{}
 
 	// The stream receive operation
 	c.wait.Add(1)
@@ -206,7 +207,7 @@ func (c *comLogClient) sendBatch() error {
 			}
 
 			if err != nil {
-				c.recvErrCh <- err
+				c.streamRecvErrCh <- err
 				break
 			}
 
@@ -227,7 +228,7 @@ func (c *comLogClient) sendBatch() error {
 func (c *comLogClient) sendLoop() {
 	var (
 		lastErr          error
-		resetLingerTimer bool
+		resetLingerTimer bool = true
 		waitLinger       <-chan time.Time
 	)
 
@@ -237,11 +238,12 @@ func (c *comLogClient) sendLoop() {
 		}
 
 		select {
-		case err := <-c.recvErrCh:
+		case err := <-c.streamRecvErrCh:
 			lastErr = err
 			resetLingerTimer = false
 
 		case errCh := <-c.closeCh:
+			// TODO: change the log msg
 			c.lg.Info("Waiting for the current operations to finish")
 			c.lg.Sync()
 
@@ -250,23 +252,28 @@ func (c *comLogClient) sendLoop() {
 			return
 
 		case <-c.accumulator.startSending():
-			c.lg.Info("Start sending the batch records")
+			// Coming from an `append` event
+			c.lg.Info("Accumulator record buffer is full. Start sending the batch records...")
 			lastErr = c.sendBatch()
-			resetLingerTimer = true
+			c.accumulator.doneSending() <- struct{}{}
+			resetLingerTimer = false
 
 		case <-waitLinger:
-			c.lg.Info("Start sending the batch records")
+			c.lg.Info("Wait linger time is triggered. Start sending the batch records...",
+				zap.Duration("Wait linger time", c.batchOpt.linger))
+
 			lastErr = c.sendBatch()
+			c.accumulator.resetNextOffsetAndIndex()
 			resetLingerTimer = true
 		}
 	}
 }
 
 func (c *comLogClient) Send(ctx context.Context, record *Record, callback OnCompletionSendCallback) error {
-	offset, err := c.accumulator.append(ctx, record.Data)
+	IndexPos, err := c.accumulator.append(ctx, record.Data)
 
 	if err == nil {
-		c.currcallbacks.put(offset, callback)
+		c.currcallbacks.put(IndexPos, callback)
 	}
 
 	return err
