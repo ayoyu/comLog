@@ -179,7 +179,7 @@ Loop:
 func (s *ComLogServer) StreamBatchAppend(records *pb.BatchRecords, stream pb.ComLogRpc_StreamBatchAppendServer) error {
 	errCh := make(chan error, len(records.Batch))
 	done := make(chan struct{})
-	s.Lg.Sugar().Infof("records: ", records.Batch)
+
 	for i := 0; i < len(records.Batch); i++ {
 		go func(i int) {
 			var (
@@ -194,7 +194,8 @@ func (s *ComLogServer) StreamBatchAppend(records *pb.BatchRecords, stream pb.Com
 			default:
 				offset, nn, err = s.log.Append(records.Batch[i].Data)
 			}
-			s.Lg.Sugar().Infof("Server: ", string(records.Batch[i].Data), i, offset)
+			s.Lg.Sugar().Debugf("Server: ", string(records.Batch[i].Data), i, offset)
+
 			if err != nil {
 				errMsg = err.Error()
 			}
