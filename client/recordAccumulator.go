@@ -114,9 +114,11 @@ func (r *recordAccumulator) resetNextOffsetAndIndex() {
 	r.nextIndex.Store(0)
 }
 
+func (r *recordAccumulator) recordsSize() int64 {
+	return r.nextIndex.Load()
+}
+
 func (r *recordAccumulator) prepareRecordBatch() pb.BatchRecords {
-	// NOW the Bug is located in the r.index we must reset this slice when we send the batch the same thing
-	// we do with the buffer.
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
