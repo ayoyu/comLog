@@ -9,7 +9,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -18,18 +18,25 @@ import (
 	"github.com/ayoyu/comLog/comLog"
 )
 
+type Config struct {
+	LogCfg comLog.Config
+
+	Lg *zap.Logger
+}
+
 type ComLogServer struct {
 	pb.UnimplementedComLogRpcServer
+	Config
+
 	log        *comLog.Log
 	shutDownCh chan os.Signal
 }
 
-func NewComLogServer(conf comLog.Config) (*ComLogServer, error) {
-	log, err := comLog.NewLog(conf)
+func NewComLogServer(cfg Config) (*ComLogServer, error) {
+	log, err := comLog.NewLog(cfg.LogCfg)
 	if err != nil {
 		return nil, err
 	}
-	logrus.Infof("Initializing the commit log server (data directory: %s)", conf.Data_dir)
 
 	shutDownCh := make(chan os.Signal, 1)
 	signal.Notify(
@@ -40,14 +47,22 @@ func NewComLogServer(conf comLog.Config) (*ComLogServer, error) {
 		syscall.SIGINT,
 	)
 
-	return &ComLogServer{
+	if cfg.Lg == nil {
+		cfg.Lg = zap.NewNop()
+	}
+
+	s := &ComLogServer{
+		Config:     cfg,
 		log:        log,
 		shutDownCh: shutDownCh,
-	}, nil
+	}
+	s.Lg.Info("Initializing the commit log server", zap.String("data directory", s.log.Data_dir))
+
+	return s, nil
 }
 
 func (s *ComLogServer) Close() error {
-	logrus.Infof("Start closing the commit log server (data directory: %s)", s.log.Data_dir)
+	s.Lg.Info("Closing the commit log server", zap.String("data directory", s.log.Data_dir))
 
 	return s.log.Close()
 }
@@ -57,23 +72,25 @@ func (s *ComLogServer) GracefulShutdown(grpcGracefulStop func()) <-chan struct{}
 
 	go func() {
 		sig := <-s.shutDownCh
-		logrus.Infof("Received signal %v, attempting to gracefully shutdown the commit log server", sig)
+		s.Lg.Info("Shutdown gracefully the commit log server", zap.Any("signal", sig))
 
 		var wait sync.WaitGroup
 		wait.Add(1)
 		go func() {
 			defer wait.Done()
 			if err := s.Close(); err != nil {
-				logrus.Warnf("Closing the commit log failed with error %v", err)
+				s.Lg.Warn("Closing the commit log failed", zap.Error(err))
 				return
 			}
-			logrus.Infof("Closing the commit log operation finished")
+
+			s.Lg.Info("Closing the commit log operation is done")
 		}()
 
 		wait.Add(1)
 		go func() {
 			grpcGracefulStop()
-			logrus.Infof("Grpc server GracefulStop operation finished")
+			s.Lg.Info("Grpc server GracefulStop operation is done")
+
 			wait.Done()
 		}()
 
@@ -162,7 +179,7 @@ Loop:
 func (s *ComLogServer) StreamBatchAppend(records *pb.BatchRecords, stream pb.ComLogRpc_StreamBatchAppendServer) error {
 	errCh := make(chan error, len(records.Batch))
 	done := make(chan struct{})
-
+	s.Lg.Sugar().Infof("records: ", records.Batch)
 	for i := 0; i < len(records.Batch); i++ {
 		go func(i int) {
 			var (
@@ -177,7 +194,7 @@ func (s *ComLogServer) StreamBatchAppend(records *pb.BatchRecords, stream pb.Com
 			default:
 				offset, nn, err = s.log.Append(records.Batch[i].Data)
 			}
-
+			s.Lg.Sugar().Infof("Server: ", string(records.Batch[i].Data), i, offset)
 			if err != nil {
 				errMsg = err.Error()
 			}

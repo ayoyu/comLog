@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
@@ -27,6 +27,16 @@ type Client struct {
 	// to keep these connections healthy by automatically reconnecting to them when they break.
 	// Ref: https://github.com/grpc/grpc-go/blob/master/Documentation/anti-patterns.md
 	conn *grpc.ClientConn
+
+	lg *zap.Logger
+}
+
+// WithLogger overrides the default no-op logger
+func WithLogger(lg *zap.Logger) Option {
+	return func(c *Client) error {
+		c.lg = lg
+		return nil
+	}
 }
 
 // WithRetryPolicyOption configures the retry policy option.
@@ -254,6 +264,11 @@ func New(ctx context.Context, serverAddr string, opts ...Option) (*Client, error
 			return nil, err
 		}
 	}
+
+	if cli.lg == nil {
+		cli.lg = zap.NewNop()
+	}
+
 	cli.addDialOpts()
 	cli.addCallOpts()
 
@@ -262,9 +277,10 @@ func New(ctx context.Context, serverAddr string, opts ...Option) (*Client, error
 		cli.cancel()
 		return nil, err
 	}
-	logrus.Infof("Start background dial with target: %s", cli.serverAddr)
-	cli.conn = conn
 
+	cli.lg.Info("Start background dial", zap.String("target", cli.serverAddr))
+
+	cli.conn = conn
 	cli.ComLogClient = NewClientComLog(cli)
 	// client.Auth = NewAuth(client) // TODO
 

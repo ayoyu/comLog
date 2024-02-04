@@ -7,6 +7,7 @@ import (
 	"time"
 
 	pb "github.com/ayoyu/comLog/api"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
 
@@ -75,6 +76,9 @@ type ComLogClient interface {
 	// waiting for the `ReadResponse` response from the server which includes the recod in bytes `[]byte`
 	// and the number of bytes we were able to read.
 	Read(ctx context.Context, offset *Offset) (*ReadResponse, error)
+
+	// Close shutdow the commit log client
+	Close() error
 }
 
 type callbacks struct {
@@ -121,6 +125,8 @@ type comLogClient struct {
 
 	closeCh   chan chan error
 	recvErrCh chan error
+
+	lg *zap.Logger
 }
 
 func NewClientComLog(c *Client) ComLogClient {
@@ -134,6 +140,7 @@ func NewClientComLog(c *Client) ComLogClient {
 		wait:          new(sync.WaitGroup),
 		closeCh:       make(chan chan error),
 		recvErrCh:     make(chan error, 1),
+		lg:            c.lg,
 	}
 
 	go cli.sendLoop()
@@ -175,7 +182,8 @@ func (c *comLogClient) sendBatch() error {
 	stream, err := c.remote.StreamBatchAppend(context.TODO(), &batch, c.callOpts...)
 
 	if err != nil {
-		// TODO: Log the error status of not being able to send the batch record
+		c.lg.Error("Failed to send the stream batch records", zap.Error(err))
+
 		c.accumulator.doneSending() <- struct{}{}
 		return err
 	}
@@ -234,16 +242,20 @@ func (c *comLogClient) sendLoop() {
 			resetLingerTimer = false
 
 		case errCh := <-c.closeCh:
-			// TODO: Log the waiting status
+			c.lg.Info("Waiting for the current operations to finish")
+			c.lg.Sync()
+
 			c.wait.Wait()
 			errCh <- lastErr
 			return
 
 		case <-c.accumulator.startSending():
+			c.lg.Info("Start sending the batch records")
 			lastErr = c.sendBatch()
 			resetLingerTimer = true
 
 		case <-waitLinger:
+			c.lg.Info("Start sending the batch records")
 			lastErr = c.sendBatch()
 			resetLingerTimer = true
 		}

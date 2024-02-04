@@ -4,11 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"os"
 
 	pb "github.com/ayoyu/comLog/api"
 	"github.com/ayoyu/comLog/comLog"
 	"github.com/ayoyu/comLog/server"
-	"github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
@@ -46,8 +47,8 @@ func newGrpcServer() (*grpc.Server, error) {
 
 	if *OPT_TLS {
 		if *OPT_CERT_FILE == "" || *OPT_KEY_FILE == "" {
-			logrus.Warnf("The cert_file or key_file flags are empty while the tls boolean flag is true. " +
-				"The server in this case will start without any TLS configuration.")
+			// logrus.Warnf("The cert_file or key_file flags are empty while the tls boolean flag is true. " +
+			// 	"The server in this case will start without any TLS configuration.")
 		} else {
 			cred, err := credentials.NewServerTLSFromFile(*OPT_CERT_FILE, *OPT_KEY_FILE)
 			if err != nil {
@@ -84,21 +85,31 @@ func newGrpcServer() (*grpc.Server, error) {
 }
 
 func main() {
+	lg, err := zap.NewProduction()
+	if err != nil {
+		os.Exit(1)
+	}
+	defer lg.Sync()
+
 	grpcServer, err := newGrpcServer()
 	if err != nil {
-		logrus.Fatalf("Failed to create the gRPC server %v\n", err)
+		lg.Fatal("Failed to create the gRPC server", zap.Error(err))
 	}
 	comlogServer, err := server.NewComLogServer(
-		comLog.Config{
-			Data_dir:      *LOG_DATA_DIR,
-			NbrOfSegments: *OPT_LOG_NBR_SEGMENTS,
-			StoreMaxBytes: *OPT_LOG_STORE_MAX_BYTES,
-			IndexMaxBytes: *OPT_LOG_INDEX_MAX_BYTES,
+		server.Config{
+			LogCfg: comLog.Config{
+				Data_dir:      *LOG_DATA_DIR,
+				NbrOfSegments: *OPT_LOG_NBR_SEGMENTS,
+				StoreMaxBytes: *OPT_LOG_STORE_MAX_BYTES,
+				IndexMaxBytes: *OPT_LOG_INDEX_MAX_BYTES,
+			},
+			Lg: lg,
 		},
 	)
 	if err != nil {
-		logrus.Fatalf("Failed to init the commit log %v\n", err)
+		lg.Fatal("Failed to init the commit log", zap.Error(err))
 	}
+
 	pb.RegisterComLogRpcServer(grpcServer, comlogServer)
 
 	shutDownDone := comlogServer.GracefulShutdown(grpcServer.GracefulStop)
@@ -106,12 +117,12 @@ func main() {
 	// Start serving
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *OPT_PORT))
 	if err != nil {
-		logrus.Fatalf("Failed to start listening on port %d, %v\n", *OPT_PORT, err)
+		lg.Fatal("Net listener Failed to start", zap.Int("port", *OPT_PORT), zap.Error(err))
 	}
-	logrus.Infof("Start listening on port :%d\n", *OPT_PORT)
+	lg.Info("Start listening", zap.Int("port", *OPT_PORT))
 
 	if err := grpcServer.Serve(lis); err != nil {
-		logrus.Fatalf("Failed to start the grpc server %v\n", err)
+		lg.Fatal("Failed to start the grpc server", zap.Error(err))
 	}
 
 	<-shutDownDone
