@@ -190,8 +190,9 @@ func (c *comLogClient) sendBatch() error {
 		return err
 	}
 	// Once we set the prevcallbacks, the current callbacks can be overwritten when we
-	// send the doneSending signal to the accumulator. In this case the accumulator can contiue
+	// send the doneSending signal to the accumulator. In this case the accumulator can continue
 	// adding next record without blocking to wait for the whole stream receive operation
+	// that is happening in parallel.
 	c.prevcallbacks.setStore(c.currcallbacks.store)
 
 	// The stream receive operation
@@ -243,18 +244,23 @@ func (c *comLogClient) sendLoop() {
 			resetLingerTimer = false
 
 		case errCh := <-c.closeCh:
-			// TODO: change the log msg
-			c.lg.Info("Waiting for the current operations to finish")
-			c.lg.Sync()
+			c.lg.Info("Closing the client. Sending the remaining records from the accumulator "+
+				"and waiting for all the current operations to finish...",
+				zap.Int64("remaining records number", c.accumulator.recordsSize()))
 
+			lastErr = c.sendBatch()
+			// We don't really need to reset the accumulator next-positions as we are done.
 			c.wait.Wait()
 			errCh <- lastErr
+
+			c.lg.Sync() // TODO: handle the error
 			return
 
 		case <-c.accumulator.startSending():
-			// Coming from an `append` event
+			// Coming from an `append` event when no room exists for the next records.
 			c.lg.Info("Accumulator record buffer is full. Start sending the batch records...")
 			lastErr = c.sendBatch()
+			// TODO: Handle the error from `sendBatch`. What should we do in this case ?
 			c.accumulator.doneSending() <- struct{}{}
 			resetLingerTimer = false
 
@@ -263,6 +269,7 @@ func (c *comLogClient) sendLoop() {
 				zap.Duration("Wait linger time", c.batchOpt.linger))
 
 			lastErr = c.sendBatch()
+			// TODO: Handle the error from `sendBatch`. What should we do in this case ?
 			c.accumulator.resetNextOffsetAndIndex()
 			resetLingerTimer = true
 		}
