@@ -49,15 +49,10 @@ type Segment struct {
 	closedForAppend bool
 }
 
-/*
-Init a new segment (store and index files)
-
-	:param: dir: file system directory where the physical store and index files will be stored
-	:param: smaxBytes: max bytes to store in the store-file
-	:param: idxMaxBytes: max bytes to store in the index-file
-	:param: baseOffset: the start indexing offset
-*/
-func NewSegment(dir string, stmaxBytes, idxMaxBytes, baseOffset uint64) (*Segment, error) {
+// Create a new segment with the store and index files. The `dir` parameter is the file system directory where the physical
+// store and index files will be persisted, `stMaxBytes` and `idxMaxBytes`indicate the limit in bytes to store both on the store
+// and on the index files and `baseOffset` is the start indexing offset.
+func NewSegment(dir string, stMaxBytes, idxMaxBytes, baseOffset uint64) (*Segment, error) {
 	var (
 		err        error
 		storeFile  *store
@@ -76,7 +71,7 @@ func NewSegment(dir string, stmaxBytes, idxMaxBytes, baseOffset uint64) (*Segmen
 	if err != nil {
 		return nil, fmt.Errorf(segContext+"Failed to open the store file. Err: %w", err)
 	}
-	storeFile, err = newStore(sfile, stmaxBytes)
+	storeFile, err = newStore(sfile, stMaxBytes)
 	if err != nil {
 		return nil, fmt.Errorf(segContext+"Failed to init the store. Err: %w", err)
 	}
@@ -112,6 +107,11 @@ func (seg *Segment) getIndexPath() string {
 
 // check if segment is full
 func (seg *Segment) isFull() bool {
+	// Even if this is a read operation we choose not to take a `RLock` in order to reduce EOF error appends
+	// from the index side when the log split is triggered and a delay append is still pending to append,
+	// similar to what can happen in the case of `NotActiveAnymore`.
+	// We could do the same trick by retrying (similar to the CAS operation), but after benchmarking we figure out
+	// it's not worth it (no clear gain at all and we will just add another complexity).
 	seg.mu.Lock()
 	defer seg.mu.Unlock()
 	// To reduce missing appends:
@@ -121,7 +121,8 @@ func (seg *Segment) isFull() bool {
 	// an example: index.size=560(=16 * 35) while index.maxByte = 563, in this situation
 	// it will wait until the store.size trigger the maxed with missing appends
 	// (the index file contains fixed sequence of byte of length 16)
-	return seg.storeFile.size >= seg.storeFile.maxBytes || seg.indexFile.size+indexWidth >= seg.indexFile.maxBytes
+	return seg.storeFile.size >= seg.storeFile.maxBytes ||
+		seg.indexFile.maxBytes-seg.indexFile.size < indexWidth
 }
 
 // Append a new record to the segment.

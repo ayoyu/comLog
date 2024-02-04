@@ -20,7 +20,7 @@ run_server:
 		mkdir ${DEV_LOG_DATA_DIR}; \
 	fi
 
-	go run server/cmd/main.go --log-data-dir ${DEV_LOG_DATA_DIR} \
+	go run -race server/cmd/main.go --log-data-dir ${DEV_LOG_DATA_DIR} \
 	--log-store-max-bytes ${DEV_STORE_MAX_BYTES} \
 	--log-index-max-bytes ${DEV_INDEX_MAX_BYTES} \
 	--tls ${DEV_LOG_USE_TLS}
@@ -32,10 +32,10 @@ default_server:
 		mkdir ${DEV_LOG_DATA_DIR}; \
 	fi
 
-	go run server/cmd/main.go --log-data-dir ${DEV_LOG_DATA_DIR}
+	go run -race server/cmd/main.go --log-data-dir ${DEV_LOG_DATA_DIR}
 
 
-help_server:
+server_help:
 	go run server/cmd/main.go --help
 
 

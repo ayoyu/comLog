@@ -64,9 +64,10 @@ func (x IndexFlushSyncType_Type) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use IndexFlushSyncType_Type.Descriptor instead.
 func (IndexFlushSyncType_Type) EnumDescriptor() ([]byte, []int) {
-	return file_api_api_proto_rawDescGZIP(), []int{4, 0}
+	return file_api_api_proto_rawDescGZIP(), []int{7, 0}
 }
 
+// Record represents the record data in bytes to send to the log server to be appended.
 type Record struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -114,6 +115,57 @@ func (x *Record) GetData() []byte {
 	return nil
 }
 
+// BatchRecords represents a batch of `Record` to send.
+type BatchRecords struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Batch []*Record `protobuf:"bytes,1,rep,name=batch,proto3" json:"batch,omitempty"`
+}
+
+func (x *BatchRecords) Reset() {
+	*x = BatchRecords{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_api_api_proto_msgTypes[1]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *BatchRecords) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchRecords) ProtoMessage() {}
+
+func (x *BatchRecords) ProtoReflect() protoreflect.Message {
+	mi := &file_api_api_proto_msgTypes[1]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchRecords.ProtoReflect.Descriptor instead.
+func (*BatchRecords) Descriptor() ([]byte, []int) {
+	return file_api_api_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *BatchRecords) GetBatch() []*Record {
+	if x != nil {
+		return x.Batch
+	}
+	return nil
+}
+
+// AppendRecordResp represents the server response from appending a record.
+// The `offset` indicates the offset at which the record was assigned in the log
+// while the `nbrOfStoredBytes` indicates the number of bytes that were stored in the log.
 type AppendRecordResp struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -126,7 +178,7 @@ type AppendRecordResp struct {
 func (x *AppendRecordResp) Reset() {
 	*x = AppendRecordResp{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_api_api_proto_msgTypes[1]
+		mi := &file_api_api_proto_msgTypes[2]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -139,7 +191,7 @@ func (x *AppendRecordResp) String() string {
 func (*AppendRecordResp) ProtoMessage() {}
 
 func (x *AppendRecordResp) ProtoReflect() protoreflect.Message {
-	mi := &file_api_api_proto_msgTypes[1]
+	mi := &file_api_api_proto_msgTypes[2]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -152,7 +204,7 @@ func (x *AppendRecordResp) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppendRecordResp.ProtoReflect.Descriptor instead.
 func (*AppendRecordResp) Descriptor() ([]byte, []int) {
-	return file_api_api_proto_rawDescGZIP(), []int{1}
+	return file_api_api_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *AppendRecordResp) GetOffset() uint64 {
@@ -169,6 +221,120 @@ func (x *AppendRecordResp) GetNbrOfStoredBytes() int64 {
 	return 0
 }
 
+// StreamAppendRecordResp represents the server stream response from appending a record
+// from a batch append operation when using the `client.Send` api.
+type StreamAppendRecordResp struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Resp     *AppendRecordResp `protobuf:"bytes,1,opt,name=resp,proto3" json:"resp,omitempty"`
+	Index    int64             `protobuf:"varint,2,opt,name=index,proto3" json:"index,omitempty"`
+	ErrorMsg string            `protobuf:"bytes,3,opt,name=errorMsg,proto3" json:"errorMsg,omitempty"`
+}
+
+func (x *StreamAppendRecordResp) Reset() {
+	*x = StreamAppendRecordResp{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_api_api_proto_msgTypes[3]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *StreamAppendRecordResp) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StreamAppendRecordResp) ProtoMessage() {}
+
+func (x *StreamAppendRecordResp) ProtoReflect() protoreflect.Message {
+	mi := &file_api_api_proto_msgTypes[3]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StreamAppendRecordResp.ProtoReflect.Descriptor instead.
+func (*StreamAppendRecordResp) Descriptor() ([]byte, []int) {
+	return file_api_api_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *StreamAppendRecordResp) GetResp() *AppendRecordResp {
+	if x != nil {
+		return x.Resp
+	}
+	return nil
+}
+
+func (x *StreamAppendRecordResp) GetIndex() int64 {
+	if x != nil {
+		return x.Index
+	}
+	return 0
+}
+
+func (x *StreamAppendRecordResp) GetErrorMsg() string {
+	if x != nil {
+		return x.ErrorMsg
+	}
+	return ""
+}
+
+// BatchAppendResp represents the server response from appending a batch of records in the same rpc call.
+type BatchAppendResp struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Response []*BatchAppendResp_RespWithOrder `protobuf:"bytes,1,rep,name=response,proto3" json:"response,omitempty"`
+}
+
+func (x *BatchAppendResp) Reset() {
+	*x = BatchAppendResp{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_api_api_proto_msgTypes[4]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *BatchAppendResp) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchAppendResp) ProtoMessage() {}
+
+func (x *BatchAppendResp) ProtoReflect() protoreflect.Message {
+	mi := &file_api_api_proto_msgTypes[4]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchAppendResp.ProtoReflect.Descriptor instead.
+func (*BatchAppendResp) Descriptor() ([]byte, []int) {
+	return file_api_api_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *BatchAppendResp) GetResponse() []*BatchAppendResp_RespWithOrder {
+	if x != nil {
+		return x.Response
+	}
+	return nil
+}
+
+// Offset represents the integer offset with which we can read a record from the log server.
 type Offset struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -180,7 +346,7 @@ type Offset struct {
 func (x *Offset) Reset() {
 	*x = Offset{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_api_api_proto_msgTypes[2]
+		mi := &file_api_api_proto_msgTypes[5]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -193,7 +359,7 @@ func (x *Offset) String() string {
 func (*Offset) ProtoMessage() {}
 
 func (x *Offset) ProtoReflect() protoreflect.Message {
-	mi := &file_api_api_proto_msgTypes[2]
+	mi := &file_api_api_proto_msgTypes[5]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -206,7 +372,7 @@ func (x *Offset) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Offset.ProtoReflect.Descriptor instead.
 func (*Offset) Descriptor() ([]byte, []int) {
-	return file_api_api_proto_rawDescGZIP(), []int{2}
+	return file_api_api_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Offset) GetValue() int64 {
@@ -216,6 +382,9 @@ func (x *Offset) GetValue() int64 {
 	return 0
 }
 
+// ReadRecordResp represents the server response from reading a record.
+// The `record` holds the actual record in bytes while the `nbrOfReadBytes` indicates
+// the number of bytes that we were able to read.
 type ReadRecordResp struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -228,7 +397,7 @@ type ReadRecordResp struct {
 func (x *ReadRecordResp) Reset() {
 	*x = ReadRecordResp{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_api_api_proto_msgTypes[3]
+		mi := &file_api_api_proto_msgTypes[6]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -241,7 +410,7 @@ func (x *ReadRecordResp) String() string {
 func (*ReadRecordResp) ProtoMessage() {}
 
 func (x *ReadRecordResp) ProtoReflect() protoreflect.Message {
-	mi := &file_api_api_proto_msgTypes[3]
+	mi := &file_api_api_proto_msgTypes[6]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -254,7 +423,7 @@ func (x *ReadRecordResp) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadRecordResp.ProtoReflect.Descriptor instead.
 func (*ReadRecordResp) Descriptor() ([]byte, []int) {
-	return file_api_api_proto_rawDescGZIP(), []int{3}
+	return file_api_api_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ReadRecordResp) GetRecord() []byte {
@@ -271,6 +440,8 @@ func (x *ReadRecordResp) GetNbrOfReadBytes() int64 {
 	return 0
 }
 
+// IndexFlushSyncType specifies wheter flushing should be done synchronously or asynchronously regarding the index
+// mmap linked to the active segment.
 type IndexFlushSyncType struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -282,7 +453,7 @@ type IndexFlushSyncType struct {
 func (x *IndexFlushSyncType) Reset() {
 	*x = IndexFlushSyncType{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_api_api_proto_msgTypes[4]
+		mi := &file_api_api_proto_msgTypes[7]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -295,7 +466,7 @@ func (x *IndexFlushSyncType) String() string {
 func (*IndexFlushSyncType) ProtoMessage() {}
 
 func (x *IndexFlushSyncType) ProtoReflect() protoreflect.Message {
-	mi := &file_api_api_proto_msgTypes[4]
+	mi := &file_api_api_proto_msgTypes[7]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -308,7 +479,7 @@ func (x *IndexFlushSyncType) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IndexFlushSyncType.ProtoReflect.Descriptor instead.
 func (*IndexFlushSyncType) Descriptor() ([]byte, []int) {
-	return file_api_api_proto_rawDescGZIP(), []int{4}
+	return file_api_api_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *IndexFlushSyncType) GetValue() IndexFlushSyncType_Type {
@@ -318,6 +489,9 @@ func (x *IndexFlushSyncType) GetValue() IndexFlushSyncType_Type {
 	return IndexFlushSyncType_INDEX_MMAP_SYNC
 }
 
+// LogMetaData holds informations about the state of the log regarding the `segmentsSize` which is
+// the actual number of segments, the `oldestOffset` and `lastOffset` which represents the first and the last
+// registred offsets.
 type LogMetaData struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -331,7 +505,7 @@ type LogMetaData struct {
 func (x *LogMetaData) Reset() {
 	*x = LogMetaData{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_api_api_proto_msgTypes[5]
+		mi := &file_api_api_proto_msgTypes[8]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -344,7 +518,7 @@ func (x *LogMetaData) String() string {
 func (*LogMetaData) ProtoMessage() {}
 
 func (x *LogMetaData) ProtoReflect() protoreflect.Message {
-	mi := &file_api_api_proto_msgTypes[5]
+	mi := &file_api_api_proto_msgTypes[8]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -357,7 +531,7 @@ func (x *LogMetaData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogMetaData.ProtoReflect.Descriptor instead.
 func (*LogMetaData) Descriptor() ([]byte, []int) {
-	return file_api_api_proto_rawDescGZIP(), []int{5}
+	return file_api_api_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *LogMetaData) GetSegmentsSize() int64 {
@@ -381,6 +555,8 @@ func (x *LogMetaData) GetLastOffset() uint64 {
 	return 0
 }
 
+// CollectOffset represents the integer offset with which we can trigger the segments collection operation
+// which will delete segements containing records older than the given collect offset.
 type CollectOffset struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -392,7 +568,7 @@ type CollectOffset struct {
 func (x *CollectOffset) Reset() {
 	*x = CollectOffset{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_api_api_proto_msgTypes[6]
+		mi := &file_api_api_proto_msgTypes[9]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -405,7 +581,7 @@ func (x *CollectOffset) String() string {
 func (*CollectOffset) ProtoMessage() {}
 
 func (x *CollectOffset) ProtoReflect() protoreflect.Message {
-	mi := &file_api_api_proto_msgTypes[6]
+	mi := &file_api_api_proto_msgTypes[9]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -418,12 +594,72 @@ func (x *CollectOffset) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CollectOffset.ProtoReflect.Descriptor instead.
 func (*CollectOffset) Descriptor() ([]byte, []int) {
-	return file_api_api_proto_rawDescGZIP(), []int{6}
+	return file_api_api_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *CollectOffset) GetValue() uint64 {
 	if x != nil {
 		return x.Value
+	}
+	return 0
+}
+
+type BatchAppendResp_RespWithOrder struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// resp is the server append response of a record.
+	Resp *AppendRecordResp `protobuf:"bytes,1,opt,name=resp,proto3" json:"resp,omitempty"`
+	// index indicates the original index of the record in the batch from where
+	// it was appended. This index can help the caller to identify the record that was
+	// successfully appended from the batch since the batch append operation is asynchronous
+	// which means it doesn't preserve the original order reflected in the returned offset.
+	Index int64 `protobuf:"varint,2,opt,name=index,proto3" json:"index,omitempty"`
+}
+
+func (x *BatchAppendResp_RespWithOrder) Reset() {
+	*x = BatchAppendResp_RespWithOrder{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_api_api_proto_msgTypes[10]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *BatchAppendResp_RespWithOrder) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchAppendResp_RespWithOrder) ProtoMessage() {}
+
+func (x *BatchAppendResp_RespWithOrder) ProtoReflect() protoreflect.Message {
+	mi := &file_api_api_proto_msgTypes[10]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchAppendResp_RespWithOrder.ProtoReflect.Descriptor instead.
+func (*BatchAppendResp_RespWithOrder) Descriptor() ([]byte, []int) {
+	return file_api_api_proto_rawDescGZIP(), []int{4, 0}
+}
+
+func (x *BatchAppendResp_RespWithOrder) GetResp() *AppendRecordResp {
+	if x != nil {
+		return x.Resp
+	}
+	return nil
+}
+
+func (x *BatchAppendResp_RespWithOrder) GetIndex() int64 {
+	if x != nil {
+		return x.Index
 	}
 	return 0
 }
@@ -436,12 +672,33 @@ var file_api_api_proto_rawDesc = []byte{
 	0x74, 0x6f, 0x62, 0x75, 0x66, 0x2f, 0x65, 0x6d, 0x70, 0x74, 0x79, 0x2e, 0x70, 0x72, 0x6f, 0x74,
 	0x6f, 0x22, 0x1c, 0x0a, 0x06, 0x52, 0x65, 0x63, 0x6f, 0x72, 0x64, 0x12, 0x12, 0x0a, 0x04, 0x64,
 	0x61, 0x74, 0x61, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x04, 0x64, 0x61, 0x74, 0x61, 0x22,
-	0x56, 0x0a, 0x10, 0x41, 0x70, 0x70, 0x65, 0x6e, 0x64, 0x52, 0x65, 0x63, 0x6f, 0x72, 0x64, 0x52,
-	0x65, 0x73, 0x70, 0x12, 0x16, 0x0a, 0x06, 0x6f, 0x66, 0x66, 0x73, 0x65, 0x74, 0x18, 0x01, 0x20,
-	0x01, 0x28, 0x04, 0x52, 0x06, 0x6f, 0x66, 0x66, 0x73, 0x65, 0x74, 0x12, 0x2a, 0x0a, 0x10, 0x6e,
-	0x62, 0x72, 0x4f, 0x66, 0x53, 0x74, 0x6f, 0x72, 0x65, 0x64, 0x42, 0x79, 0x74, 0x65, 0x73, 0x18,
-	0x02, 0x20, 0x01, 0x28, 0x03, 0x52, 0x10, 0x6e, 0x62, 0x72, 0x4f, 0x66, 0x53, 0x74, 0x6f, 0x72,
-	0x65, 0x64, 0x42, 0x79, 0x74, 0x65, 0x73, 0x22, 0x1e, 0x0a, 0x06, 0x4f, 0x66, 0x66, 0x73, 0x65,
+	0x31, 0x0a, 0x0c, 0x42, 0x61, 0x74, 0x63, 0x68, 0x52, 0x65, 0x63, 0x6f, 0x72, 0x64, 0x73, 0x12,
+	0x21, 0x0a, 0x05, 0x62, 0x61, 0x74, 0x63, 0x68, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x0b,
+	0x2e, 0x61, 0x70, 0x69, 0x2e, 0x52, 0x65, 0x63, 0x6f, 0x72, 0x64, 0x52, 0x05, 0x62, 0x61, 0x74,
+	0x63, 0x68, 0x22, 0x56, 0x0a, 0x10, 0x41, 0x70, 0x70, 0x65, 0x6e, 0x64, 0x52, 0x65, 0x63, 0x6f,
+	0x72, 0x64, 0x52, 0x65, 0x73, 0x70, 0x12, 0x16, 0x0a, 0x06, 0x6f, 0x66, 0x66, 0x73, 0x65, 0x74,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x04, 0x52, 0x06, 0x6f, 0x66, 0x66, 0x73, 0x65, 0x74, 0x12, 0x2a,
+	0x0a, 0x10, 0x6e, 0x62, 0x72, 0x4f, 0x66, 0x53, 0x74, 0x6f, 0x72, 0x65, 0x64, 0x42, 0x79, 0x74,
+	0x65, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x03, 0x52, 0x10, 0x6e, 0x62, 0x72, 0x4f, 0x66, 0x53,
+	0x74, 0x6f, 0x72, 0x65, 0x64, 0x42, 0x79, 0x74, 0x65, 0x73, 0x22, 0x75, 0x0a, 0x16, 0x53, 0x74,
+	0x72, 0x65, 0x61, 0x6d, 0x41, 0x70, 0x70, 0x65, 0x6e, 0x64, 0x52, 0x65, 0x63, 0x6f, 0x72, 0x64,
+	0x52, 0x65, 0x73, 0x70, 0x12, 0x29, 0x0a, 0x04, 0x72, 0x65, 0x73, 0x70, 0x18, 0x01, 0x20, 0x01,
+	0x28, 0x0b, 0x32, 0x15, 0x2e, 0x61, 0x70, 0x69, 0x2e, 0x41, 0x70, 0x70, 0x65, 0x6e, 0x64, 0x52,
+	0x65, 0x63, 0x6f, 0x72, 0x64, 0x52, 0x65, 0x73, 0x70, 0x52, 0x04, 0x72, 0x65, 0x73, 0x70, 0x12,
+	0x14, 0x0a, 0x05, 0x69, 0x6e, 0x64, 0x65, 0x78, 0x18, 0x02, 0x20, 0x01, 0x28, 0x03, 0x52, 0x05,
+	0x69, 0x6e, 0x64, 0x65, 0x78, 0x12, 0x1a, 0x0a, 0x08, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x4d, 0x73,
+	0x67, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x4d, 0x73,
+	0x67, 0x22, 0xa3, 0x01, 0x0a, 0x0f, 0x42, 0x61, 0x74, 0x63, 0x68, 0x41, 0x70, 0x70, 0x65, 0x6e,
+	0x64, 0x52, 0x65, 0x73, 0x70, 0x12, 0x3e, 0x0a, 0x08, 0x72, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
+	0x65, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x22, 0x2e, 0x61, 0x70, 0x69, 0x2e, 0x42, 0x61,
+	0x74, 0x63, 0x68, 0x41, 0x70, 0x70, 0x65, 0x6e, 0x64, 0x52, 0x65, 0x73, 0x70, 0x2e, 0x52, 0x65,
+	0x73, 0x70, 0x57, 0x69, 0x74, 0x68, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x52, 0x08, 0x72, 0x65, 0x73,
+	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x1a, 0x50, 0x0a, 0x0d, 0x52, 0x65, 0x73, 0x70, 0x57, 0x69, 0x74,
+	0x68, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x12, 0x29, 0x0a, 0x04, 0x72, 0x65, 0x73, 0x70, 0x18, 0x01,
+	0x20, 0x01, 0x28, 0x0b, 0x32, 0x15, 0x2e, 0x61, 0x70, 0x69, 0x2e, 0x41, 0x70, 0x70, 0x65, 0x6e,
+	0x64, 0x52, 0x65, 0x63, 0x6f, 0x72, 0x64, 0x52, 0x65, 0x73, 0x70, 0x52, 0x04, 0x72, 0x65, 0x73,
+	0x70, 0x12, 0x14, 0x0a, 0x05, 0x69, 0x6e, 0x64, 0x65, 0x78, 0x18, 0x02, 0x20, 0x01, 0x28, 0x03,
+	0x52, 0x05, 0x69, 0x6e, 0x64, 0x65, 0x78, 0x22, 0x1e, 0x0a, 0x06, 0x4f, 0x66, 0x66, 0x73, 0x65,
 	0x74, 0x12, 0x14, 0x0a, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03,
 	0x52, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x22, 0x50, 0x0a, 0x0e, 0x52, 0x65, 0x61, 0x64, 0x52,
 	0x65, 0x63, 0x6f, 0x72, 0x64, 0x52, 0x65, 0x73, 0x70, 0x12, 0x16, 0x0a, 0x06, 0x72, 0x65, 0x63,
@@ -466,27 +723,35 @@ var file_api_api_proto_rawDesc = []byte{
 	0x04, 0x52, 0x0a, 0x6c, 0x61, 0x73, 0x74, 0x4f, 0x66, 0x66, 0x73, 0x65, 0x74, 0x22, 0x25, 0x0a,
 	0x0d, 0x43, 0x6f, 0x6c, 0x6c, 0x65, 0x63, 0x74, 0x4f, 0x66, 0x66, 0x73, 0x65, 0x74, 0x12, 0x14,
 	0x0a, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x04, 0x52, 0x05, 0x76,
-	0x61, 0x6c, 0x75, 0x65, 0x32, 0x9f, 0x02, 0x0a, 0x09, 0x43, 0x6f, 0x6d, 0x4c, 0x6f, 0x67, 0x52,
+	0x61, 0x6c, 0x75, 0x65, 0x32, 0xa2, 0x03, 0x0a, 0x09, 0x43, 0x6f, 0x6d, 0x4c, 0x6f, 0x67, 0x52,
 	0x70, 0x63, 0x12, 0x2e, 0x0a, 0x06, 0x41, 0x70, 0x70, 0x65, 0x6e, 0x64, 0x12, 0x0b, 0x2e, 0x61,
 	0x70, 0x69, 0x2e, 0x52, 0x65, 0x63, 0x6f, 0x72, 0x64, 0x1a, 0x15, 0x2e, 0x61, 0x70, 0x69, 0x2e,
 	0x41, 0x70, 0x70, 0x65, 0x6e, 0x64, 0x52, 0x65, 0x63, 0x6f, 0x72, 0x64, 0x52, 0x65, 0x73, 0x70,
-	0x22, 0x00, 0x12, 0x2a, 0x0a, 0x04, 0x52, 0x65, 0x61, 0x64, 0x12, 0x0b, 0x2e, 0x61, 0x70, 0x69,
-	0x2e, 0x4f, 0x66, 0x66, 0x73, 0x65, 0x74, 0x1a, 0x13, 0x2e, 0x61, 0x70, 0x69, 0x2e, 0x52, 0x65,
-	0x61, 0x64, 0x52, 0x65, 0x63, 0x6f, 0x72, 0x64, 0x52, 0x65, 0x73, 0x70, 0x22, 0x00, 0x12, 0x3a,
-	0x0a, 0x05, 0x46, 0x6c, 0x75, 0x73, 0x68, 0x12, 0x17, 0x2e, 0x61, 0x70, 0x69, 0x2e, 0x49, 0x6e,
-	0x64, 0x65, 0x78, 0x46, 0x6c, 0x75, 0x73, 0x68, 0x53, 0x79, 0x6e, 0x63, 0x54, 0x79, 0x70, 0x65,
-	0x1a, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62,
-	0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x22, 0x00, 0x12, 0x39, 0x0a, 0x0b, 0x47, 0x65,
-	0x74, 0x4d, 0x65, 0x74, 0x61, 0x44, 0x61, 0x74, 0x61, 0x12, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67,
-	0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74,
-	0x79, 0x1a, 0x10, 0x2e, 0x61, 0x70, 0x69, 0x2e, 0x4c, 0x6f, 0x67, 0x4d, 0x65, 0x74, 0x61, 0x44,
-	0x61, 0x74, 0x61, 0x22, 0x00, 0x12, 0x3f, 0x0a, 0x0f, 0x43, 0x6f, 0x6c, 0x6c, 0x65, 0x63, 0x74,
-	0x53, 0x65, 0x67, 0x6d, 0x65, 0x6e, 0x74, 0x73, 0x12, 0x12, 0x2e, 0x61, 0x70, 0x69, 0x2e, 0x43,
-	0x6f, 0x6c, 0x6c, 0x65, 0x63, 0x74, 0x4f, 0x66, 0x66, 0x73, 0x65, 0x74, 0x1a, 0x16, 0x2e, 0x67,
+	0x22, 0x00, 0x12, 0x38, 0x0a, 0x0b, 0x42, 0x61, 0x74, 0x63, 0x68, 0x41, 0x70, 0x70, 0x65, 0x6e,
+	0x64, 0x12, 0x11, 0x2e, 0x61, 0x70, 0x69, 0x2e, 0x42, 0x61, 0x74, 0x63, 0x68, 0x52, 0x65, 0x63,
+	0x6f, 0x72, 0x64, 0x73, 0x1a, 0x14, 0x2e, 0x61, 0x70, 0x69, 0x2e, 0x42, 0x61, 0x74, 0x63, 0x68,
+	0x41, 0x70, 0x70, 0x65, 0x6e, 0x64, 0x52, 0x65, 0x73, 0x70, 0x22, 0x00, 0x12, 0x47, 0x0a, 0x11,
+	0x53, 0x74, 0x72, 0x65, 0x61, 0x6d, 0x42, 0x61, 0x74, 0x63, 0x68, 0x41, 0x70, 0x70, 0x65, 0x6e,
+	0x64, 0x12, 0x11, 0x2e, 0x61, 0x70, 0x69, 0x2e, 0x42, 0x61, 0x74, 0x63, 0x68, 0x52, 0x65, 0x63,
+	0x6f, 0x72, 0x64, 0x73, 0x1a, 0x1b, 0x2e, 0x61, 0x70, 0x69, 0x2e, 0x53, 0x74, 0x72, 0x65, 0x61,
+	0x6d, 0x41, 0x70, 0x70, 0x65, 0x6e, 0x64, 0x52, 0x65, 0x63, 0x6f, 0x72, 0x64, 0x52, 0x65, 0x73,
+	0x70, 0x22, 0x00, 0x30, 0x01, 0x12, 0x2a, 0x0a, 0x04, 0x52, 0x65, 0x61, 0x64, 0x12, 0x0b, 0x2e,
+	0x61, 0x70, 0x69, 0x2e, 0x4f, 0x66, 0x66, 0x73, 0x65, 0x74, 0x1a, 0x13, 0x2e, 0x61, 0x70, 0x69,
+	0x2e, 0x52, 0x65, 0x61, 0x64, 0x52, 0x65, 0x63, 0x6f, 0x72, 0x64, 0x52, 0x65, 0x73, 0x70, 0x22,
+	0x00, 0x12, 0x3a, 0x0a, 0x05, 0x46, 0x6c, 0x75, 0x73, 0x68, 0x12, 0x17, 0x2e, 0x61, 0x70, 0x69,
+	0x2e, 0x49, 0x6e, 0x64, 0x65, 0x78, 0x46, 0x6c, 0x75, 0x73, 0x68, 0x53, 0x79, 0x6e, 0x63, 0x54,
+	0x79, 0x70, 0x65, 0x1a, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f,
+	0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x22, 0x00, 0x12, 0x39, 0x0a,
+	0x0b, 0x47, 0x65, 0x74, 0x4d, 0x65, 0x74, 0x61, 0x44, 0x61, 0x74, 0x61, 0x12, 0x16, 0x2e, 0x67,
 	0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45,
-	0x6d, 0x70, 0x74, 0x79, 0x22, 0x00, 0x42, 0x1d, 0x5a, 0x1b, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62,
-	0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x61, 0x79, 0x6f, 0x79, 0x75, 0x2f, 0x63, 0x6f, 0x6d, 0x4c, 0x6f,
-	0x67, 0x2f, 0x61, 0x70, 0x69, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x6d, 0x70, 0x74, 0x79, 0x1a, 0x10, 0x2e, 0x61, 0x70, 0x69, 0x2e, 0x4c, 0x6f, 0x67, 0x4d, 0x65,
+	0x74, 0x61, 0x44, 0x61, 0x74, 0x61, 0x22, 0x00, 0x12, 0x3f, 0x0a, 0x0f, 0x43, 0x6f, 0x6c, 0x6c,
+	0x65, 0x63, 0x74, 0x53, 0x65, 0x67, 0x6d, 0x65, 0x6e, 0x74, 0x73, 0x12, 0x12, 0x2e, 0x61, 0x70,
+	0x69, 0x2e, 0x43, 0x6f, 0x6c, 0x6c, 0x65, 0x63, 0x74, 0x4f, 0x66, 0x66, 0x73, 0x65, 0x74, 0x1a,
+	0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75,
+	0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x22, 0x00, 0x42, 0x1d, 0x5a, 0x1b, 0x67, 0x69, 0x74,
+	0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x61, 0x79, 0x6f, 0x79, 0x75, 0x2f, 0x63, 0x6f,
+	0x6d, 0x4c, 0x6f, 0x67, 0x2f, 0x61, 0x70, 0x69, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -502,35 +767,47 @@ func file_api_api_proto_rawDescGZIP() []byte {
 }
 
 var file_api_api_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_api_api_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_api_api_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_api_api_proto_goTypes = []interface{}{
-	(IndexFlushSyncType_Type)(0), // 0: api.IndexFlushSyncType.Type
-	(*Record)(nil),               // 1: api.Record
-	(*AppendRecordResp)(nil),     // 2: api.AppendRecordResp
-	(*Offset)(nil),               // 3: api.Offset
-	(*ReadRecordResp)(nil),       // 4: api.ReadRecordResp
-	(*IndexFlushSyncType)(nil),   // 5: api.IndexFlushSyncType
-	(*LogMetaData)(nil),          // 6: api.LogMetaData
-	(*CollectOffset)(nil),        // 7: api.CollectOffset
-	(*emptypb.Empty)(nil),        // 8: google.protobuf.Empty
+	(IndexFlushSyncType_Type)(0),          // 0: api.IndexFlushSyncType.Type
+	(*Record)(nil),                        // 1: api.Record
+	(*BatchRecords)(nil),                  // 2: api.BatchRecords
+	(*AppendRecordResp)(nil),              // 3: api.AppendRecordResp
+	(*StreamAppendRecordResp)(nil),        // 4: api.StreamAppendRecordResp
+	(*BatchAppendResp)(nil),               // 5: api.BatchAppendResp
+	(*Offset)(nil),                        // 6: api.Offset
+	(*ReadRecordResp)(nil),                // 7: api.ReadRecordResp
+	(*IndexFlushSyncType)(nil),            // 8: api.IndexFlushSyncType
+	(*LogMetaData)(nil),                   // 9: api.LogMetaData
+	(*CollectOffset)(nil),                 // 10: api.CollectOffset
+	(*BatchAppendResp_RespWithOrder)(nil), // 11: api.BatchAppendResp.RespWithOrder
+	(*emptypb.Empty)(nil),                 // 12: google.protobuf.Empty
 }
 var file_api_api_proto_depIdxs = []int32{
-	0, // 0: api.IndexFlushSyncType.value:type_name -> api.IndexFlushSyncType.Type
-	1, // 1: api.ComLogRpc.Append:input_type -> api.Record
-	3, // 2: api.ComLogRpc.Read:input_type -> api.Offset
-	5, // 3: api.ComLogRpc.Flush:input_type -> api.IndexFlushSyncType
-	8, // 4: api.ComLogRpc.GetMetaData:input_type -> google.protobuf.Empty
-	7, // 5: api.ComLogRpc.CollectSegments:input_type -> api.CollectOffset
-	2, // 6: api.ComLogRpc.Append:output_type -> api.AppendRecordResp
-	4, // 7: api.ComLogRpc.Read:output_type -> api.ReadRecordResp
-	8, // 8: api.ComLogRpc.Flush:output_type -> google.protobuf.Empty
-	6, // 9: api.ComLogRpc.GetMetaData:output_type -> api.LogMetaData
-	8, // 10: api.ComLogRpc.CollectSegments:output_type -> google.protobuf.Empty
-	6, // [6:11] is the sub-list for method output_type
-	1, // [1:6] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	1,  // 0: api.BatchRecords.batch:type_name -> api.Record
+	3,  // 1: api.StreamAppendRecordResp.resp:type_name -> api.AppendRecordResp
+	11, // 2: api.BatchAppendResp.response:type_name -> api.BatchAppendResp.RespWithOrder
+	0,  // 3: api.IndexFlushSyncType.value:type_name -> api.IndexFlushSyncType.Type
+	3,  // 4: api.BatchAppendResp.RespWithOrder.resp:type_name -> api.AppendRecordResp
+	1,  // 5: api.ComLogRpc.Append:input_type -> api.Record
+	2,  // 6: api.ComLogRpc.BatchAppend:input_type -> api.BatchRecords
+	2,  // 7: api.ComLogRpc.StreamBatchAppend:input_type -> api.BatchRecords
+	6,  // 8: api.ComLogRpc.Read:input_type -> api.Offset
+	8,  // 9: api.ComLogRpc.Flush:input_type -> api.IndexFlushSyncType
+	12, // 10: api.ComLogRpc.GetMetaData:input_type -> google.protobuf.Empty
+	10, // 11: api.ComLogRpc.CollectSegments:input_type -> api.CollectOffset
+	3,  // 12: api.ComLogRpc.Append:output_type -> api.AppendRecordResp
+	5,  // 13: api.ComLogRpc.BatchAppend:output_type -> api.BatchAppendResp
+	4,  // 14: api.ComLogRpc.StreamBatchAppend:output_type -> api.StreamAppendRecordResp
+	7,  // 15: api.ComLogRpc.Read:output_type -> api.ReadRecordResp
+	12, // 16: api.ComLogRpc.Flush:output_type -> google.protobuf.Empty
+	9,  // 17: api.ComLogRpc.GetMetaData:output_type -> api.LogMetaData
+	12, // 18: api.ComLogRpc.CollectSegments:output_type -> google.protobuf.Empty
+	12, // [12:19] is the sub-list for method output_type
+	5,  // [5:12] is the sub-list for method input_type
+	5,  // [5:5] is the sub-list for extension type_name
+	5,  // [5:5] is the sub-list for extension extendee
+	0,  // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_api_api_proto_init() }
@@ -552,7 +829,7 @@ func file_api_api_proto_init() {
 			}
 		}
 		file_api_api_proto_msgTypes[1].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*AppendRecordResp); i {
+			switch v := v.(*BatchRecords); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -564,7 +841,7 @@ func file_api_api_proto_init() {
 			}
 		}
 		file_api_api_proto_msgTypes[2].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*Offset); i {
+			switch v := v.(*AppendRecordResp); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -576,7 +853,7 @@ func file_api_api_proto_init() {
 			}
 		}
 		file_api_api_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ReadRecordResp); i {
+			switch v := v.(*StreamAppendRecordResp); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -588,7 +865,7 @@ func file_api_api_proto_init() {
 			}
 		}
 		file_api_api_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*IndexFlushSyncType); i {
+			switch v := v.(*BatchAppendResp); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -600,7 +877,7 @@ func file_api_api_proto_init() {
 			}
 		}
 		file_api_api_proto_msgTypes[5].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*LogMetaData); i {
+			switch v := v.(*Offset); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -612,7 +889,55 @@ func file_api_api_proto_init() {
 			}
 		}
 		file_api_api_proto_msgTypes[6].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*ReadRecordResp); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_api_api_proto_msgTypes[7].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*IndexFlushSyncType); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_api_api_proto_msgTypes[8].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*LogMetaData); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_api_api_proto_msgTypes[9].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*CollectOffset); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_api_api_proto_msgTypes[10].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*BatchAppendResp_RespWithOrder); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -630,7 +955,7 @@ func file_api_api_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_api_api_proto_rawDesc,
 			NumEnums:      1,
-			NumMessages:   7,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

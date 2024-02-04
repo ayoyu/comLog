@@ -261,5 +261,5 @@ func TestOutOfRangeErr(t *testing.T) {
 
 	_, _, err = log.Read(10)
 	t.Logf("Out Of Range Offset: %s", err)
-	assert.True(t, errors.Is(err, OutOfRangeError))
+	assert.True(t, errors.Is(err, SegOutOfRangeError))
 }

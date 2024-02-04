@@ -16,7 +16,7 @@ const (
 	indexContext  = "[index]: "
 )
 
-var IndexOutOfRangeError = errors.New("the given offset is not yet filled (out of range)")
+var IndexOutOfRangeError = errors.New("no index exists with the given offset")
 
 type index struct {
 	file     *os.File
@@ -76,7 +76,6 @@ func (idx *index) read(offset int64) (uint64, error) {
 		// last entry
 		pos = idx.size - indexWidth
 	} else {
-		// offset must be scaled to the baseOffset
 		pos = uint64(offset) * indexWidth
 	}
 

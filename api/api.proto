@@ -6,24 +6,62 @@ package api;
 
 option go_package = "github.com/ayoyu/comLog/api";
 
+// Record represents the record data in bytes to send to the log server to be appended.
 message Record {
     bytes data = 1;
 }
 
-message AppendRecordResp {
-    uint64 offset                = 1;
-    int64 nbrOfStoredBytes       = 2;
+// BatchRecords represents a batch of `Record` to send. 
+message BatchRecords {
+    repeated Record batch = 1;
 }
 
+// AppendRecordResp represents the server response from appending a record.
+// The `offset` indicates the offset at which the record was assigned in the log
+// while the `nbrOfStoredBytes` indicates the number of bytes that were stored in the log.
+message AppendRecordResp {
+    uint64 offset          = 1;
+    int64 nbrOfStoredBytes = 2;
+}
+
+// StreamAppendRecordResp represents the server stream response from appending a record
+// from a batch append operation when using the `client.Send` api.
+message StreamAppendRecordResp {
+    AppendRecordResp resp = 1;
+    int64 index           = 2;
+    string errorMsg       = 3;
+}
+
+// BatchAppendResp represents the server response from appending a batch of records in the same rpc call. 
+message BatchAppendResp {
+    message RespWithOrder {
+        // resp is the server append response of a record.
+        AppendRecordResp resp = 1;
+        // index indicates the original index of the record in the batch from where
+        // it was appended. This index can help the caller to identify the record that was
+        // successfully appended from the batch since the batch append operation is asynchronous
+        // which means it doesn't preserve the original order reflected in the returned offset.
+        int64 index = 2; 
+    }
+
+    repeated RespWithOrder response = 1;
+}
+
+// Offset represents the integer offset with which we can read a record from the log server.
 message Offset {
     int64 value = 1;
 }
 
+// ReadRecordResp represents the server response from reading a record.
+// The `record` holds the actual record in bytes while the `nbrOfReadBytes` indicates
+// the number of bytes that we were able to read.
 message ReadRecordResp {
-    bytes record            = 1;
-    int64 nbrOfReadBytes    = 2;
+    bytes record         = 1;
+    int64 nbrOfReadBytes = 2;
 }
 
+// IndexFlushSyncType specifies wheter flushing should be done synchronously or asynchronously regarding the index
+// mmap linked to the active segment.
 message IndexFlushSyncType {
     enum Type {
         INDEX_MMAP_SYNC  = 0;
@@ -32,24 +70,49 @@ message IndexFlushSyncType {
     Type value = 1;
 }
 
+// LogMetaData holds informations about the state of the log regarding the `segmentsSize` which is
+// the actual number of segments, the `oldestOffset` and `lastOffset` which represents the first and the last
+// registred offsets.
 message LogMetaData {
     int64 segmentsSize  = 1;
     uint64 oldestOffset = 2;
     uint64 lastOffset   = 3;
 }
 
+// CollectOffset represents the integer offset with which we can trigger the segments collection operation
+// which will delete segements containing records older than the given collect offset.
 message CollectOffset {
     uint64 value = 1;
 }
 
 service ComLogRpc {
+    // Append sends the given record to the remote log server to be appended.
     rpc Append(Record) returns (AppendRecordResp) {}
 
+    // BatchAppend sends batch of records to the remote log server to be appended.
+    // Adding records will be applied asynchronously, meaning there is no guarantee that the order
+    // within the records in the batch will be respected in terms of the offset assigned to each record.
+    //
+    // If an error occurs while adding records, the batch operation will stop and return the records that
+    // have been successfully added so far with their original indexes in the batch and the error that caused the shutdown.
+    rpc BatchAppend(BatchRecords) returns (BatchAppendResp) {}
+
+    // StreamBatchAppend sends batch of records to the remote log server to be appended.
+    // The server response are streamed rather than returned at once. The stream option offers the possibility
+    // to receive a detailed state about the record append on the log that make it possible to call
+    // the `client.OnCompletionSendCallback` on the append record result when using the `client.Send` api. 
+    rpc StreamBatchAppend(BatchRecords) returns (stream StreamAppendRecordResp) {}
+
+    // Read gets the record that corresponds to the given offset. 
     rpc Read(Offset) returns (ReadRecordResp) {}
 
+    // Flush explicitly commit the log by flushing the active segment.
     rpc Flush(IndexFlushSyncType) returns (google.protobuf.Empty) {}
 
+    // GetMetaData returns information about the current state of the log, see `LogMetaData` message. 
     rpc GetMetaData(google.protobuf.Empty) returns (LogMetaData) {}
 
+    // CollectSegments trigger the segment collection operation that will delete segments containing records
+    // older than the given offset.
     rpc CollectSegments(CollectOffset) returns (google.protobuf.Empty) {}
 }

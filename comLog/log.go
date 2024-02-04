@@ -13,17 +13,19 @@ import (
 
 var (
 	ConfigError           = errors.New("configuration error")
-	OutOfRangeError       = errors.New("no record exists with the given offset")
+	SegOutOfRangeError    = errors.New("no record exists with the given offset")
 	InvalidOffsetArgError = errors.New("the given offset must be greater than or equal to -1")
 	SetupError            = errors.New("log setup failed, try to fix the issue and run it again")
 )
 
-// Log configuration. Be aware that the OS have a limit called "the Operating System File Descriptor Limit" that will constrain
-// the maximum number of file descriptors the process has. "Too many open files error" can happen when a process needs
-// to open more files than the operating system allows, this limits can constrain how many concurrent requests the server
-// can handle. Practically in order to avoid this behavior, you must think of a reasonable `StoreMaxBytes` capacity based
-// on the nature of the records you are appending, and also have a background/scheduled thread to run `CollectSegments`
-// in order to truncate the the Log based on some offset. Increasing the operating system file descriptor limit can also be an option.
+// Config represents the Log configuration. Be aware that the OS have a limit called "the Operating System File Descriptor Limit"
+// that will constrain the maximum number of file descriptors the process has. "Too many open files error" can happen when
+// a process needs to open more files than the operating system allows, this limits can constrain how many concurrent requests
+// the server can handle.
+// Practically in order to avoid this behavior, you must think of a reasonable `StoreMaxBytes` capacity based
+// on the nature of the records you are appending, and also have a background scheduled thread to run `CollectSegments`
+// in order to truncate the the Log based on some offset.
+// Increasing the operating system file descriptor limit can also be an option.
 type Config struct {
 	// File system directory where the physical store and index files will be stored
 	Data_dir string
@@ -250,7 +252,7 @@ func (log *Log) Read(offset int64) (nn int, record []byte, err error) {
 
 	var targetSegment *Segment = log.segmentSearch(offset)
 	if targetSegment == nil {
-		return 0, nil, OutOfRangeError
+		return 0, nil, SegOutOfRangeError
 	}
 
 	nn, record, err = targetSegment.Read(offset)
@@ -332,6 +334,12 @@ func (log *Log) LastOffset() uint64 {
 func (log *Log) OldestOffset() uint64 {
 	log.mu.RLock()
 	defer log.mu.RUnlock()
+	if len(log.segments) == 0 {
+		// Normally the `log.segments` slice should always have at leat one segment, even after calling
+		// the `CollectSegments`, if at the end all segments are collected the `log.setup` will be triggered
+		// to setup approprietly the log.
+		return 0
+	}
 	return log.segments[0].baseOffset
 }
 

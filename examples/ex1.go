@@ -3,7 +3,7 @@ package main
 /*
 Example to use the comLog package and to test also thread(goroutine) safety of the database from data race.
 
-This example is just a draft of experiments so don't consider it as a tutorial example,
+This example is just a draft of experiments so don't consider it as a tutorial example (To add later as test),
 it will get removed later and more useful examples will get added.
 */
 import (
@@ -142,7 +142,7 @@ func MixWorkLoad(verbose bool) error {
 			go func(i int) {
 				defer wait.Done()
 				select {
-				case <-time.After(time.Millisecond * 100):
+				case <-time.After(time.Millisecond * 5):
 					// this operation of printing the 2 metrics is not atomic i.e. log.LastOffset() can return a response
 					// but it doesn't mean that it is synchronize with what the log.SegmentsSize() get us as response
 					// the Lock that was holded during log.SegmentsSize() can be given to other operations before the
@@ -182,9 +182,9 @@ func MixWorkLoad(verbose bool) error {
 		t := <-res
 		if t.err != nil {
 			if verbose {
-				fmt.Println("????????????????????????? Error occur during Append", t.err, "...continue")
+				fmt.Println("????????????????????????? Error occur during Append", t.err)
 			}
-			continue
+			return t.err
 		}
 		_, rr, err := log.Read(int64(t.offset))
 		if err != nil {
@@ -199,7 +199,7 @@ func MixWorkLoad(verbose bool) error {
 				fmt.Println("<!><!><!><!><!><!><!><!><!><!><!> Found Incorrect data")
 				fmt.Println("Read offset: ", t.offset, "record readed back: ", string(rr), "!= stored record (Append): ", t.record)
 			}
-			return nil
+			return fmt.Errorf("(Second Time) Found Incorrect data")
 		}
 		if verbose {
 			fmt.Println("Read offset: ", t.offset, "record readed back: ", string(rr), "== stored record (Append): ", t.record)
@@ -232,7 +232,7 @@ func MixWorkLoad(verbose bool) error {
 				fmt.Println("<!><!><!><!><!><!><!><!><!><!><!>  (Second Time) Found Incorrect data")
 				fmt.Println("Read 2 offset: ", second.offset, "record_back_2: ", string(r2), "record_back: ", second.record_back, "original: ", second.original)
 			}
-			return nil
+			return fmt.Errorf("(Second Time) Found Incorrect data")
 		}
 		if verbose {
 			fmt.Println("(Second Time) offset: ", second.offset, "record_back2: ", string(r2), "record_back: ", second.record_back, "original: ", second.original)
@@ -243,6 +243,9 @@ func MixWorkLoad(verbose bool) error {
 }
 
 func main() {
-	MixWorkLoad(true)
+	err := MixWorkLoad(true)
+	if err != nil {
+		panic(err.Error())
+	}
 	// LogMixAppendReadWorkLoad(true)
 }
