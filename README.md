@@ -25,6 +25,6 @@ What is a commitLog ? some resources to check out if you are curious:
 ## Tasks:
 
 - [x] Write the commit log library (package)
-- [ ] Write the rpc service to expose the library
+- [x] Write the rpc service to expose the library
 - [ ] Write the service discovery logic for the distribution purpose
 - [ ] Write the service coordination/consensus logic

@@ -24,7 +24,7 @@ var (
 // the server can handle.
 // Practically in order to avoid this behavior, you must think of a reasonable `StoreMaxBytes` capacity based
 // on the nature of the records you are appending, and also have a background scheduled thread to run `CollectSegments`
-// in order to truncate the the Log based on some offset.
+// in order to truncate the Log based on some offset.
 // Increasing the operating system file descriptor limit can also be an option.
 type Config struct {
 	// File system directory where the physical store and index files will be stored

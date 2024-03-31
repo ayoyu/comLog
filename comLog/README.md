@@ -15,26 +15,18 @@ import (
 	"github.com/ayoyu/comLog/comLog"
 )
 
-const (
-	log_dir       string = "/tmp_dir" // don't forget to mkdir the directory
-	StoreMaxBytes uint64 = 4096
-	IndexMaxBytes uint64 = 4096
-)
-
 func main() {
-	var conf comLog.Config = comLog.Config{
-		Data_dir:      log_dir,
-		StoreMaxBytes: StoreMaxBytes,
-		IndexMaxBytes: IndexMaxBytes,
+	conf := comLog.Config{
+		Data_dir:      "/data/directory/",
+		StoreMaxBytes: 4096,
+		IndexMaxBytes: 4096,
 	}
-	var (
-		err error
-		log *comLog.Log
-	)
-	log, err = comLog.NewLog(conf)
+
+	log, err := comLog.NewLog(conf)
 	if err != nil {
 		panic(err.Error())
 	}
+
 	// Closing the log
 	defer func() {
 		if err := log.Close(); err != nil {
@@ -42,22 +34,16 @@ func main() {
 		}
 	}()
 
-	var (
-		offset uint64
-		nn     int
-	)
-	offset, nn, err = log.Append(
+	offset, nn, err := log.Append(
 		[]byte(`{
 			"name": "value",
 			"type": "record",
 			"fields": [{"name": "user_id","type": "int"},{"name": "gender","type": "string"}]
 		}`))
-
 	if err != nil {
-		fmt.Printf("Append Error %v\n", err)
-	} else {
-		fmt.Printf("Offset: %v, Nbr of written bytes: %v\n", offset, nn)
+		panic(err.Error())
 	}
+	fmt.Printf("Offset: %v, Nbr of written bytes: %v\n", offset, nn)
 }
 ```
 
@@ -90,10 +76,10 @@ var (
 // Read with the offset from the append example
 nn, record, err = log.Read(int64(offset))
 if err != nil {
-	fmt.Printf("Read Error %v\n", err)
-} else {
-	fmt.Printf("Record: %v\n, Nbr of read bytes: %v\n", string(record), nn)
+	panic(err.Error())
 }
+
+fmt.Printf("Record: %v\n, Nbr of read bytes: %v\n", string(record), nn)
 ```
 
 - Polling the last written record at a certain time with `offset=-1`
@@ -106,10 +92,10 @@ var (
 )
 nn, record, err = log.Read(-1)
 if err != nil {
-	fmt.Printf("Polling Error %v\n", err)
-} else {
-	fmt.Printf("Record: %v\n, Nbr of read bytes: %v\n", string(record), nn)
+	panic(err.Error())
 }
+
+fmt.Printf("Record: %v\n, Nbr of read bytes: %v\n", string(record), nn)
 ```
 
 Note: The read operation will make an implicit flush of the records store buffer, before reading.
