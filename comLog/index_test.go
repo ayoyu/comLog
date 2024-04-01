@@ -115,7 +115,7 @@ func TestIndexReadOutofRangeError(t *testing.T) {
 	assert.Nil(t, err)
 	pos, err := index.read(1)
 	assert.Equal(t, int(pos), 0)
-	assert.ErrorIs(t, err, IndexOutOfRangeError)
+	assert.ErrorIs(t, err, ErrIndexOutOfRange)
 	// remove the temp test data
 	removeTempFile(index.file.Name())
 }

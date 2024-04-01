@@ -12,10 +12,10 @@ import (
 )
 
 var (
-	ConfigError           = errors.New("configuration error")
-	SegOutOfRangeError    = errors.New("no record exists with the given offset")
-	InvalidOffsetArgError = errors.New("the given offset must be greater than or equal to -1")
-	SetupError            = errors.New("log setup failed, try to fix the issue and run it again")
+	ErrConfig           = errors.New("log configuration error")
+	ErrSegOutOfRange    = errors.New("no record exists with the given offset")
+	ErrInvalidOffsetArg = errors.New("the given offset must be greater than or equal to -1")
+	ErrSetup            = errors.New("log setup failed, try to fix the issue and run it again")
 )
 
 // Config represents the Log configuration. Be aware that the OS have a limit called "the Operating System File Descriptor Limit"
@@ -50,11 +50,11 @@ type Log struct {
 // Init a new Log instance from the given configuration
 func NewLog(conf Config) (*Log, error) {
 	if conf.Data_dir == "" {
-		return nil, fmt.Errorf("%w: Data_dir is empty", ConfigError)
+		return nil, fmt.Errorf("%w: Data_dir is empty", ErrConfig)
 	}
 
 	if conf.StoreMaxBytes == 0 || conf.IndexMaxBytes == 0 {
-		return nil, fmt.Errorf("%w: StoreMaxBytes and IndexMaxBytes cannot be zeros", ConfigError)
+		return nil, fmt.Errorf("%w: StoreMaxBytes and IndexMaxBytes cannot be zeros", ErrConfig)
 	}
 
 	var log *Log = &Log{
@@ -77,7 +77,7 @@ func (log *Log) setup() error {
 	)
 	entries, err = os.ReadDir(log.Data_dir)
 	if err != nil {
-		return fmt.Errorf("%w. Original Err: %w", SetupError, err)
+		return fmt.Errorf("%w. Original Err: %w", ErrSetup, err)
 	}
 
 	var (
@@ -89,7 +89,7 @@ func (log *Log) setup() error {
 	for _, entry := range entries {
 		fileInfo, err = entry.Info()
 		if err != nil {
-			return fmt.Errorf("%w. Original Err: %w", SetupError, err)
+			return fmt.Errorf("%w. Original Err: %w", ErrSetup, err)
 		}
 		// will take baseOffset info only from storeFile
 		// the existance of the indexFile that goes with the specific storeFile
@@ -98,7 +98,7 @@ func (log *Log) setup() error {
 			baseOffsetStr = strings.TrimSuffix(fileInfo.Name(), storeFileSuffix)
 			baseOffset, err = strconv.Atoi(baseOffsetStr)
 			if err != nil {
-				return fmt.Errorf("%w. Original Err: %w", SetupError, err)
+				return fmt.Errorf("%w. Original Err: %w", ErrSetup, err)
 			}
 
 			baseOffsets = append(baseOffsets, uint64(baseOffset))
@@ -118,7 +118,7 @@ func (log *Log) setup() error {
 		for _, base := range baseOffsets {
 			seg, err = NewSegment(log.Data_dir, log.StoreMaxBytes, log.IndexMaxBytes, base)
 			if err != nil {
-				return fmt.Errorf("%w. Original Err: %w", SetupError, err)
+				return fmt.Errorf("%w. Original Err: %w", ErrSetup, err)
 			}
 
 			log.segments = append(log.segments, seg)
@@ -128,7 +128,7 @@ func (log *Log) setup() error {
 		// first segment with InitOffset=0
 		seg, err = NewSegment(log.Data_dir, log.StoreMaxBytes, log.IndexMaxBytes, 0)
 		if err != nil {
-			return fmt.Errorf("%w. Original Err: %w", SetupError, err)
+			return fmt.Errorf("%w. Original Err: %w", ErrSetup, err)
 		}
 		log.segments = append(log.segments, seg)
 	}
@@ -194,7 +194,7 @@ func (log *Log) Append(record []byte) (offset uint64, nn int, err error) {
 	for {
 		// retry
 		offset, nn, err = log.loadActiveSeg().Append(record)
-		if err != NotActiveAnymore {
+		if err != ErrNotActiveAnymore {
 			break
 		}
 	}
@@ -247,12 +247,12 @@ func (log *Log) segmentSearch(offset int64) *Segment {
 // the number of bytes read and an error if any.
 func (log *Log) Read(offset int64) (nn int, record []byte, err error) {
 	if offset < -1 {
-		return 0, nil, InvalidOffsetArgError
+		return 0, nil, ErrInvalidOffsetArg
 	}
 
 	var targetSegment *Segment = log.segmentSearch(offset)
 	if targetSegment == nil {
-		return 0, nil, SegOutOfRangeError
+		return 0, nil, ErrSegOutOfRange
 	}
 
 	nn, record, err = targetSegment.Read(offset)

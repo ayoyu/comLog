@@ -134,7 +134,7 @@ func WithMaxSendRecvMsgSize(sendBytes, recvBytes int) Option {
 		if recvBytes > 0 {
 			if sendBytes == 0 && recvBytes < defaultmaxSendMsgSize {
 				return fmt.Errorf(
-					"If the send limit (%d bytes) is not defined, the recv limit (%d bytes) must be greater than 2MB (default)",
+					"if the send limit (%d bytes) is not defined, the recv limit (%d bytes) must be greater than 2MB (default)",
 					sendBytes, recvBytes,
 				)
 			}

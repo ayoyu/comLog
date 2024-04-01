@@ -24,7 +24,7 @@ const (
 	INDEX_MMAP_ASYNC
 )
 
-var NotActiveAnymore = errors.New("abort append, the pointed Segment is not active anymore")
+var ErrNotActiveAnymore = errors.New("abort append, the pointed Segment is not active anymore")
 
 // The Segment structure that holds the pair index-store files.
 // It maintains the base Offset and keep track of the next Offset.
@@ -109,7 +109,7 @@ func (seg *Segment) getIndexPath() string {
 func (seg *Segment) isFull() bool {
 	// Even if this is a read operation we choose not to take a `RLock` in order to reduce EOF error appends
 	// from the index side when the log split is triggered and a delay append is still pending to append,
-	// similar to what can happen in the case of `NotActiveAnymore`.
+	// similar to what can happen in the case of `ErrNotActiveAnymore`.
 	// We could do the same trick by retrying (similar to the CAS operation), but after benchmarking we figure out
 	// it's not worth it (no clear gain at all and we will just add another complexity).
 	seg.mu.Lock()
@@ -136,7 +136,7 @@ func (seg *Segment) Append(record []byte) (currOffset uint64, nn int, err error)
 	}
 
 	if !seg.isActive {
-		return 0, 0, NotActiveAnymore
+		return 0, 0, ErrNotActiveAnymore
 	}
 
 	currOffset = seg.nextOffset

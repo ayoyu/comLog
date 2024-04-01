@@ -16,7 +16,7 @@ const (
 	indexContext  = "[index]: "
 )
 
-var IndexOutOfRangeError = errors.New("no index exists with the given offset")
+var ErrIndexOutOfRange = errors.New("no index exists with the given offset")
 
 type index struct {
 	file     *os.File
@@ -81,7 +81,7 @@ func (idx *index) read(offset int64) (uint64, error) {
 
 	if pos+indexWidth > idx.size {
 		// this pos is not yet filled
-		return 0, IndexOutOfRangeError
+		return 0, ErrIndexOutOfRange
 	}
 	var recordPos uint64 = encoding.Uint64(idx.mmap[pos+offsetWidth : pos+indexWidth])
 

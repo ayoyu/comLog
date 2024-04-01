@@ -44,6 +44,7 @@ func TestNewSegment_NotEmptyIndexFile(t *testing.T) {
 	assert.Nil(t, err)
 
 	segment, err := NewSegment(dirpath, DefaultMaxBytesStore, DefaultMaxBytesIndex, baseOffset)
+	assert.Nil(t, err)
 	assert.Equal(t, segment.nextOffset, baseOffset+2)
 	assert.Equal(t, int(segment.indexFile.nbrOfIndexes()), 2)
 	removeTempDir(dirpath)
@@ -134,16 +135,18 @@ func TestSegmentBasicRead(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Equal(t, offset, case_s.offset)
 		t.Logf("Write: %s, offset: %d", case_s.record, offset)
+
 		// Read back
 		_, read_back_record, err := seg.Read(int64(offset))
 		assert.Nil(t, err)
-		t.Logf("Read Back: %s", string(read_back_record))
-		assert.Equal(t, read_back_record, case_s.record)
-		_, lastEntry, err := seg.Read(-1)
-		t.Logf("Read Curr LastEntry: %s", lastEntry)
-		assert.Equal(t, lastEntry, case_s.record)
-		t.Logf("********************************")
 
+		t.Logf("Read record again: %s", string(read_back_record))
+		assert.Equal(t, read_back_record, case_s.record)
+
+		_, lastEntry, err := seg.Read(-1)
+		assert.Nil(t, err)
+		t.Logf("Read current LastEntry: %s", lastEntry)
+		assert.Equal(t, lastEntry, case_s.record)
 	}
 }
 
