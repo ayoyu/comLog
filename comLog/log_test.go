@@ -247,7 +247,7 @@ func TestInvalidOffsetArgumentErr(t *testing.T) {
 
 	_, _, err = log.Read(-2)
 	t.Logf("Invalid Offset Argument: %s", err)
-	assert.True(t, errors.Is(err, InvalidOffsetArgError))
+	assert.True(t, errors.Is(err, ErrInvalidOffsetArg))
 }
 
 func TestOutOfRangeErr(t *testing.T) {
@@ -261,5 +261,5 @@ func TestOutOfRangeErr(t *testing.T) {
 
 	_, _, err = log.Read(10)
 	t.Logf("Out Of Range Offset: %s", err)
-	assert.True(t, errors.Is(err, SegOutOfRangeError))
+	assert.True(t, errors.Is(err, ErrSegOutOfRange))
 }

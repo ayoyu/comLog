@@ -32,7 +32,7 @@ type recordAccumulator struct {
 func newRecordAccumulator(size int) *recordAccumulator {
 	return &recordAccumulator{
 		size: size,
-		buf:  make([]byte, size, size),
+		buf:  make([]byte, size),
 		// we don't know in advance how many records we will have. Rough estimate: 20 bytes per record
 		indexes:   make([]BufferOffset, 0, size/20),
 		startSend: make(chan struct{}, 1),
