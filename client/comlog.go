@@ -227,31 +227,26 @@ func (c *comLogClient) sendBatch() error {
 }
 
 func (c *comLogClient) sendLoop() {
-	var (
-		lastErr          error
-		resetLingerTimer bool = true
-		waitLinger       <-chan time.Time
-	)
+	var lastSeenErr error
+
+	lingerTimer := time.NewTimer(c.batchOpt.linger)
+	defer lingerTimer.Stop()
 
 	for {
-		if resetLingerTimer {
-			waitLinger = time.NewTimer(c.batchOpt.linger).C
-		}
-
 		select {
 		case err := <-c.streamRecvErrCh:
-			lastErr = err
-			resetLingerTimer = false
+			// TODO: Handle the lastSeenErr. What should we do in this case ?
+			lastSeenErr = err
 
 		case errCh := <-c.closeCh:
 			c.lg.Info("Closing the client. Sending the remaining records from the accumulator "+
 				"and waiting for all the current operations to finish...",
 				zap.Int64("remaining records number", c.accumulator.recordsSize()))
 
-			lastErr = c.sendBatch()
+			lastSeenErr = c.sendBatch()
 			// We don't really need to reset the accumulator next-positions as we are done.
 			c.wait.Wait()
-			errCh <- lastErr
+			errCh <- lastSeenErr
 
 			c.lg.Sync() // TODO: handle the error
 			return
@@ -259,19 +254,19 @@ func (c *comLogClient) sendLoop() {
 		case <-c.accumulator.startSending():
 			// Coming from an `append` event when no room exists for the next records.
 			c.lg.Info("Accumulator record buffer is full. Start sending the batch records...")
-			lastErr = c.sendBatch()
+			lastSeenErr = c.sendBatch()
 			// TODO: Handle the error from `sendBatch`. What should we do in this case ?
 			c.accumulator.doneSending() <- struct{}{}
-			resetLingerTimer = false
+			// resetLingerTimer = false
 
-		case <-waitLinger:
+		case <-lingerTimer.C:
 			c.lg.Info("Wait linger time is triggered. Start sending the batch records...",
 				zap.Duration("Wait linger time", c.batchOpt.linger))
 
-			lastErr = c.sendBatch()
+			lastSeenErr = c.sendBatch()
 			// TODO: Handle the error from `sendBatch`. What should we do in this case ?
 			c.accumulator.resetNextOffsetAndIndex()
-			resetLingerTimer = true
+			lingerTimer.Reset(c.batchOpt.linger)
 		}
 	}
 }
