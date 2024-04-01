@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -117,6 +118,7 @@ func (s *ComLogServer) Append(ctx context.Context, record *pb.Record) (*pb.Appen
 	}, nil
 }
 
+// FIXME
 func (s *ComLogServer) BatchAppend(ctx context.Context, records *pb.BatchRecords) (*pb.BatchAppendResp, error) {
 	ctx, cancelFunc := context.WithCancel(ctx)
 	defer cancelFunc()
@@ -177,29 +179,31 @@ Loop:
 }
 
 func (s *ComLogServer) StreamBatchAppend(records *pb.BatchRecords, stream pb.ComLogRpc_StreamBatchAppendServer) error {
-	errCh := make(chan error, len(records.Batch))
-	done := make(chan struct{})
+	grp, ctx := errgroup.WithContext(context.Background())
 
 	for i := 0; i < len(records.Batch); i++ {
-		go func(i int) {
+		i := i
+
+		grp.Go(func() error {
 			var (
 				offset uint64
 				nn     int
 				err    error
 				errMsg string
 			)
+
 			select {
-			case <-done:
-				return
+			case <-ctx.Done():
+				return context.Cause(ctx)
+
 			default:
 				offset, nn, err = s.log.Append(records.Batch[i].Data)
 			}
-			s.Lg.Sugar().Debugf("Server: ", string(records.Batch[i].Data), i, offset)
+			s.Lg.Sugar().Debugf("Stream record: ", string(records.Batch[i].Data), i, offset)
 
 			if err != nil {
 				errMsg = err.Error()
 			}
-
 			resp := pb.StreamAppendRecordResp{
 				Resp: &pb.AppendRecordResp{
 					Offset:           offset,
@@ -210,25 +214,18 @@ func (s *ComLogServer) StreamBatchAppend(records *pb.BatchRecords, stream pb.Com
 			}
 
 			select {
-			case <-done:
-				return
+			case <-ctx.Done():
+				return context.Cause(ctx)
+
 			default:
 				err = stream.Send(&resp)
-				errCh <- err
 			}
 
-		}(i)
-	}
-
-	for i := 0; i < len(records.Batch); i++ {
-		err := <-errCh
-		if err != nil {
-			close(done)
 			return err
-		}
+		})
 	}
 
-	return nil
+	return grp.Wait()
 }
 
 func (s *ComLogServer) Read(ctx context.Context, offset *pb.Offset) (*pb.ReadRecordResp, error) {
