@@ -1,6 +1,7 @@
 package comLog
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -9,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -40,6 +43,7 @@ type Config struct {
 // The Log structure that holds the list of used segments and maintains the reference to the active segment
 type Log struct {
 	Config
+
 	mu sync.RWMutex
 	// Data segements represented by the store and index
 	segments []*Segment
@@ -48,21 +52,21 @@ type Log struct {
 }
 
 // Init a new Log instance from the given configuration
-func NewLog(conf Config) (*Log, error) {
-	if conf.Data_dir == "" {
+func NewLog(cfg Config) (*Log, error) {
+	if cfg.Data_dir == "" {
 		return nil, fmt.Errorf("%w: Data_dir is empty", ErrConfig)
 	}
 
-	if conf.StoreMaxBytes == 0 || conf.IndexMaxBytes == 0 {
+	if cfg.StoreMaxBytes == 0 || cfg.IndexMaxBytes == 0 {
 		return nil, fmt.Errorf("%w: StoreMaxBytes and IndexMaxBytes cannot be zeros", ErrConfig)
 	}
 
-	var log *Log = &Log{
-		Config:   conf,
-		segments: make([]*Segment, 0, conf.NbrOfSegments),
+	log := &Log{
+		Config:   cfg,
+		segments: make([]*Segment, 0, cfg.NbrOfSegments),
 	}
-	err := log.setup()
-	if err != nil {
+
+	if err := log.setup(); err != nil {
 		return nil, err
 	}
 
@@ -75,6 +79,7 @@ func (log *Log) setup() error {
 		err     error
 		entries []os.DirEntry
 	)
+
 	entries, err = os.ReadDir(log.Data_dir)
 	if err != nil {
 		return fmt.Errorf("%w. Original Err: %w", ErrSetup, err)
@@ -86,6 +91,7 @@ func (log *Log) setup() error {
 		baseOffset    int
 		baseOffsets   []uint64
 	)
+
 	for _, entry := range entries {
 		fileInfo, err = entry.Info()
 		if err != nil {
@@ -146,15 +152,15 @@ func (log *Log) loadActiveSeg() *Segment {
 
 // createNewActiveSeg creates a new active segment during the split phase
 func (log *Log) createNewActiveSeg() error {
-	var oldSegment *Segment = log.loadActiveSeg()
+	oldSegment := log.loadActiveSeg()
 	oldSegment.setIsActive(false)
+
 	// Implicit async flush for the old segment
-	err := oldSegment.Flush(INDEX_MMAP_ASYNC)
-	if err != nil {
+	if err := oldSegment.Flush(INDEX_MMAP_ASYNC); err != nil {
 		return err
 	}
 
-	var nextBaseOffset uint64 = oldSegment.getNextOffset()
+	nextBaseOffset := oldSegment.getNextOffset()
 	newActiveSeg, err := NewSegment(log.Data_dir, log.StoreMaxBytes, log.IndexMaxBytes, nextBaseOffset)
 	if err != nil {
 		return err
@@ -174,39 +180,36 @@ func (log *Log) splitForNewActiveSeg() bool {
 
 // Append a record to the log. It returns the offset, the number of bytes written and an error if any
 func (log *Log) Append(record []byte) (offset uint64, nn int, err error) {
-	// to ensure split correctness
 	log.mu.Lock()
 	if log.splitForNewActiveSeg() {
-		err = log.createNewActiveSeg()
-		if err != nil {
+		if err = log.createNewActiveSeg(); err != nil {
 			log.mu.Unlock()
 			return 0, 0, err
 		}
 	}
 	log.mu.Unlock()
-
 	// Delayed append can happen from a goroutine that was not able to acquire
 	// the activeSegment lock, and so when this happen (the lock is acquired) probably
 	// the segment that the goroutine is referencing from previous `loadActiveSeg` is not anymore the active
 	// segment (i.e. `log.vactiveSegment.Store` of active segement happened).
-	// That's why we should retry in this case to **re-load** the active segment.
+	// That's why we should retry in this case to **re-load** the active segment (similar to the CAS operation).
 	// This behavior occurs during the split segment, because we don't lock the whole append with log mutex.
 	for {
-		// retry
 		offset, nn, err = log.loadActiveSeg().Append(record)
 		if err != ErrNotActiveAnymore {
 			break
 		}
 	}
+
 	if err != nil {
 		return 0, 0, err
 	}
+
 	return offset, nn, nil
 }
 
 // Search for the corresponding segment given the offset
 func (log *Log) segmentSearch(offset int64) *Segment {
-	// to protect log.segements slice
 	log.mu.RLock()
 	defer log.mu.RUnlock()
 
@@ -217,10 +220,10 @@ func (log *Log) segmentSearch(offset int64) *Segment {
 	}
 
 	uOffset := uint64(offset)
-	// binary search
 	left := 0
 	right := len(log.segments) - 1
 	var mid int
+
 	for left <= right {
 		mid = left + ((right - left) >> 1)
 		// check if the mid is pointing to the activeSeg or not. if not we can read without worying
@@ -240,6 +243,7 @@ func (log *Log) segmentSearch(offset int64) *Segment {
 			return log.segments[mid]
 		}
 	}
+
 	return nil
 }
 
@@ -250,7 +254,7 @@ func (log *Log) Read(offset int64) (nn int, record []byte, err error) {
 		return 0, nil, ErrInvalidOffsetArg
 	}
 
-	var targetSegment *Segment = log.segmentSearch(offset)
+	targetSegment := log.segmentSearch(offset)
 	if targetSegment == nil {
 		return 0, nil, ErrSegOutOfRange
 	}
@@ -259,6 +263,7 @@ func (log *Log) Read(offset int64) (nn int, record []byte, err error) {
 	if err != nil {
 		return 0, nil, err
 	}
+
 	return nn, record, nil
 }
 
@@ -269,7 +274,7 @@ func (log *Log) Flush(typ IndexSyncType) error {
 	return log.loadActiveSeg().Flush(typ)
 }
 
-// Close the Log. It will close all segemnts it was able to close until an error occur or not.
+// Closes the Log by closing all its segemnts it was able to close until an error occur or not.
 func (log *Log) Close() error {
 	log.mu.Lock()
 	defer log.mu.Unlock()
@@ -278,34 +283,23 @@ func (log *Log) Close() error {
 		return nil
 	}
 
-	errCh := make(chan error, len(log.segments))
-	done := make(chan struct{})
+	grp, ctx := errgroup.WithContext(context.Background())
+
 	for i := 0; i < len(log.segments); i++ {
-		go func(i int) {
+		i := i
+		grp.Go(func() error {
 			select {
-			case <-done:
-				return
+			case <-ctx.Done():
+				return context.Cause(ctx)
 
 			default:
-				err := log.segments[i].Close()
-				select {
-				case <-done:
-					return
-				case errCh <- err:
-				}
+				return log.segments[i].Close()
+
 			}
-		}(i)
+		})
 	}
 
-	for i := 0; i < len(log.segments); i++ {
-		err := <-errCh
-		if err != nil {
-			// the first occured error is enough to finish and cancel the other goroutines
-			close(done)
-			return err
-		}
-	}
-	return nil
+	return grp.Wait()
 }
 
 // Remove removes the Log with all its segements it was able to remove until an error occur or not.
@@ -334,45 +328,39 @@ func (log *Log) LastOffset() uint64 {
 func (log *Log) OldestOffset() uint64 {
 	log.mu.RLock()
 	defer log.mu.RUnlock()
+
 	if len(log.segments) == 0 {
 		// Normally the `log.segments` slice should always have at leat one segment, even after calling
 		// the `CollectSegments`, if at the end all segments are collected the `log.setup` will be triggered
 		// to setup approprietly the log.
 		return 0
 	}
+
 	return log.segments[0].baseOffset
 }
 
 // CollectSegments deletes log segements containing records older than the given offset.
-// It acts as a segment garbage collector for the log. If there are no segments left, CollectSegments will setup the log again
-// so we can have the active segment ready.
+// It acts as a segment garbage collector for the log. If there are no segments left, CollectSegments
+// will setup the log again so we can have the active segment ready.
 func (log *Log) CollectSegments(offset uint64) error {
 	log.mu.Lock()
 	defer log.mu.Unlock()
 
 	newSegments := make([]*Segment, 0, len(log.segments))
-
-	errCh := make(chan error, len(log.segments))
-	done := make(chan struct{})
-	delSegs := 0
+	grp, ctx := errgroup.WithContext(context.Background())
 
 	for i := 0; i < len(log.segments); i++ {
 		if log.segments[i].baseOffset < offset {
-			delSegs++
-			go func(i int) {
+			i := i
+			grp.Go(func() error {
 				select {
-				case <-done:
-					return
+				case <-ctx.Done():
+					return context.Cause(ctx)
 
 				default:
-					err := log.segments[i].Remove()
-					select {
-					case <-done:
-						return
-					case errCh <- err:
-					}
+					return log.segments[i].Remove()
 				}
-			}(i)
+			})
 
 		} else {
 			newSegments = append(newSegments, log.segments[i])
@@ -380,20 +368,16 @@ func (log *Log) CollectSegments(offset uint64) error {
 
 	}
 
-	for i := 0; i < delSegs; i++ {
-		err := <-errCh
-		if err != nil {
-			close(done)
-			return fmt.Errorf("the collect segments operation failed. "+
-				"The log may contain segements pointing to files that no longer exist in the log data directory. "+
-				"To recover from this failure, the log must be setup again from the current log data directory: %s. "+
-				"Original error: %w", log.Data_dir, err)
-		}
+	if err := grp.Wait(); err != nil {
+		return fmt.Errorf("the collect segments operation failed. "+
+			"The log may contain segements pointing to files that no longer exist in the log data directory. "+
+			"To recover from this failure, the log must be setup again from the current log data directory: %s. "+
+			"Original error: %w", log.Data_dir, err)
 	}
 
 	log.segments = newSegments
 	if len(log.segments) == 0 {
-		// all segments are removed, so we need to setup the log again
+		// all segments are removed, we must setup the log again
 		return log.setup()
 	}
 

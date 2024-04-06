@@ -71,7 +71,7 @@ func (st *store) read(position uint64) (int, []byte, error) {
 	st.mu.Unlock()
 
 	var nbrBytes int
-	var fetchPos int64 = int64(position)
+	fetchPos := int64(position)
 	// Fetch first the length of the record to initialize the record buffer
 	recordLen := make([]byte, lenghtOfRecordSize)
 	nn, err := st.file.ReadAt(recordLen, fetchPos)
@@ -82,8 +82,7 @@ func (st *store) read(position uint64) (int, []byte, error) {
 	nbrBytes += nn
 
 	// Fetch the record
-	var size uint64 = encoding.Uint64(recordLen)
-	record := make([]byte, size)
+	record := make([]byte, encoding.Uint64(recordLen))
 	// add the lenghtOfRecordSize=8 bytes to seek to the start of the record
 	fetchPos += lenghtOfRecordSize
 	nn, err = st.file.ReadAt(record, fetchPos)
