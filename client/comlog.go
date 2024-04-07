@@ -66,18 +66,23 @@ type ComLogClient interface {
 	// bytes stored for each record and the original index of the record inside the batch to identify the record that
 	// was succefully appended since the batch append operation on the server side is asynchronous.
 	//
-	// If an error occurs while appending records, the batch operation will stop and return the records that have been
-	// successfully stored so far with their original indexes in the batch and the error that caused the shutdown, which
-	// means in the worst case scenario where no record was successfully appended we can have a `BatchAppendResponse` with
-	// an empty slice and the first encountered error that caused this.
+	// Note that appending records from the batch can succeed and fail individually; if some succeed and some fail,
+	// the BatchAppend will stop and return the records that have been successfully stored so far with their original
+	// indexes in the batch and the error that caused the shutdown, which means in the worst case scenario where no record
+	// was successfully appended we will have a `BatchAppendResponse` with an empty slice and the first encountered error
+	// that caused this.
 	BatchAppend(ctx context.Context, batch *BatchRecord) (*BatchAppendResponse, error)
 
 	// Read synchronously reads the record corresponding to the given offset. This operation will block
 	// waiting for the `ReadResponse` response from the server which includes the recod in bytes `[]byte`
 	// and the number of bytes we were able to read.
+	//
+	// TODO: This will be moved soon into the consumer API
 	Read(ctx context.Context, offset *Offset) (*ReadResponse, error)
 
-	// Close shutdow the commit log client
+	// Close shuts down the commit log client and sends any remaining buffered records from the record accumulator
+	// while waiting for the current operations to finish.
+	// It must be called on the producer side in order to avoid leaks and message lost.
 	Close() error
 }
 
@@ -195,12 +200,10 @@ func (c *comLogClient) sendBatch() error {
 	// that is happening in parallel.
 	c.prevcallbacks.setStore(c.currcallbacks.store)
 
-	// The stream receive operation
 	c.wait.Add(1)
 	go func() {
 		defer c.wait.Done()
 
-		sem := make(chan struct{}, 100) // TODO(?)
 		for {
 			resp, err := stream.Recv()
 			if err == io.EOF {
@@ -215,10 +218,8 @@ func (c *comLogClient) sendBatch() error {
 			callback, ok := c.prevcallbacks.get(int(resp.Index))
 
 			if ok {
-				sem <- struct{}{}
 				c.wait.Add(1)
 				go callback(resp, c.wait)
-				<-sem
 			}
 		}
 	}()
@@ -246,18 +247,16 @@ func (c *comLogClient) sendLoop() {
 			lastSeenErr = c.sendBatch()
 			// We don't really need to reset the accumulator next-positions as we are done.
 			c.wait.Wait()
-			errCh <- lastSeenErr
 
+			errCh <- lastSeenErr
 			c.lg.Sync() // TODO: handle the error
 			return
 
 		case <-c.accumulator.startSending():
-			// Coming from an `append` event when no room exists for the next records.
 			c.lg.Info("Accumulator record buffer is full. Start sending the batch records...")
 			lastSeenErr = c.sendBatch()
 			// TODO: Handle the error from `sendBatch`. What should we do in this case ?
 			c.accumulator.doneSending() <- struct{}{}
-			// resetLingerTimer = false
 
 		case <-lingerTimer.C:
 			c.lg.Info("Wait linger time is triggered. Start sending the batch records...",

@@ -28,7 +28,7 @@ What is a commitLog ? some resources to check out if you are curious:
 $ make default_server
 ```
 
-- Send records with the client:
+- Async Producer example: Sending records with the client
 
 ```golang
 package main
