@@ -60,6 +60,11 @@ type ComLogClient interface {
 	// enough to not delay the sending of messages to the server from other goroutines.
 	Send(ctx context.Context, record *Record, callback OnCompletionSendCallback) error
 
+	// Errors is the error output channel back to the user. If `client.WithAsyncProducerReturnErrors` is set to true,
+	// You MUST read from this channel or the Producer will **Deadlock**.
+	// Otherwise if set to false (by default), this will prevents errors to be communicated back to the user.
+	Errors() <-chan error
+
 	// BatchAppend synchronously sends a batch of records to the remote log server.
 	// This operation will block waiting for the `BatchAppendResponse` response from the server which represents
 	// a slice of `pb.BatchAppendResp_RespWithOrder` containing the offset the record was assigned to, the number of
@@ -131,21 +136,26 @@ type comLogClient struct {
 	closeCh         chan chan error
 	streamRecvErrCh chan error
 
+	enableReturnProducerErr bool
+	producerErr             chan error
+
 	lg *zap.Logger
 }
 
 func NewClientComLog(c *Client) ComLogClient {
 	cli := &comLogClient{
-		remote:          pb.NewComLogRpcClient(c.conn),
-		callOpts:        c.callOpts,
-		batchOpt:        c.batch,
-		accumulator:     newRecordAccumulator(c.batch.batchSize),
-		prevcallbacks:   newCallbacks(c.batch.batchSize),
-		currcallbacks:   newCallbacks(c.batch.batchSize),
-		wait:            new(sync.WaitGroup),
-		closeCh:         make(chan chan error),
-		streamRecvErrCh: make(chan error, 1),
-		lg:              c.lg,
+		remote:                  pb.NewComLogRpcClient(c.conn),
+		callOpts:                c.callOpts,
+		batchOpt:                c.batch,
+		accumulator:             newRecordAccumulator(c.batch.batchSize),
+		prevcallbacks:           newCallbacks(c.batch.batchSize),
+		currcallbacks:           newCallbacks(c.batch.batchSize),
+		wait:                    new(sync.WaitGroup),
+		closeCh:                 make(chan chan error),
+		streamRecvErrCh:         make(chan error, 1),
+		enableReturnProducerErr: c.pReturnErr.enabled,
+		producerErr:             make(chan error),
+		lg:                      c.lg,
 	}
 
 	go cli.sendLoop()
@@ -173,6 +183,10 @@ func (c *comLogClient) Read(ctx context.Context, offset *Offset) (*ReadResponse,
 	}
 
 	return pb_out, nil
+}
+
+func (c *comLogClient) Errors() <-chan error {
+	return c.producerErr
 }
 
 func (c *comLogClient) Close() error {
@@ -212,6 +226,10 @@ func (c *comLogClient) sendBatch() error {
 
 			if err != nil {
 				c.streamRecvErrCh <- err
+				// TODO: To Study
+				// {"level":"error","ts":1712508800.4529178,"caller":"client/comlog.go:233",
+				// "msg":"streamRecvErrCh","error":"rpc error: code = Internal desc = transport: SendHeader called multiple times","stacktrace":"github.com/ayoyu/comLog/client.(*comLogClient).sendBatch.func1\n\t/home/ayoub/Desktop/CommitLogProject/comLog/client/comlog.go:233"}
+				// c.lg.Error("streamRecvErrCh", zap.Error(err))
 				break
 			}
 
@@ -228,42 +246,43 @@ func (c *comLogClient) sendBatch() error {
 }
 
 func (c *comLogClient) sendLoop() {
-	var lastSeenErr error
-
 	lingerTimer := time.NewTimer(c.batchOpt.linger)
 	defer lingerTimer.Stop()
 
 	for {
 		select {
 		case err := <-c.streamRecvErrCh:
-			// TODO: Handle the lastSeenErr. What should we do in this case ?
-			lastSeenErr = err
+			if c.enableReturnProducerErr {
+				c.producerErr <- err
+			}
 
-		case errCh := <-c.closeCh:
+		case closeErrCh := <-c.closeCh:
 			c.lg.Info("Closing the client. Sending the remaining records from the accumulator "+
 				"and waiting for all the current operations to finish...",
 				zap.Int64("remaining records number", c.accumulator.recordsSize()))
-
-			lastSeenErr = c.sendBatch()
-			// We don't really need to reset the accumulator next-positions as we are done.
+			finalErr := c.sendBatch()
+			// We don't really need to reset the accumulator next-positions as we are closing.
 			c.wait.Wait()
+			_ = c.lg.Sync() // TODO: handle the error
 
-			errCh <- lastSeenErr
-			c.lg.Sync() // TODO: handle the error
+			closeErrCh <- finalErr
 			return
 
 		case <-c.accumulator.startSending():
 			c.lg.Info("Accumulator record buffer is full. Start sending the batch records...")
-			lastSeenErr = c.sendBatch()
-			// TODO: Handle the error from `sendBatch`. What should we do in this case ?
+			if err := c.sendBatch(); c.enableReturnProducerErr && err != nil {
+				c.producerErr <- err
+			}
+
 			c.accumulator.doneSending() <- struct{}{}
 
 		case <-lingerTimer.C:
 			c.lg.Info("Wait linger time is triggered. Start sending the batch records...",
 				zap.Duration("Wait linger time", c.batchOpt.linger))
+			if err := c.sendBatch(); c.enableReturnProducerErr && err != nil {
+				c.producerErr <- err
+			}
 
-			lastSeenErr = c.sendBatch()
-			// TODO: Handle the error from `sendBatch`. What should we do in this case ?
 			c.accumulator.resetNextOffsetAndIndex()
 			lingerTimer.Reset(c.batchOpt.linger)
 		}
