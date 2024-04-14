@@ -15,8 +15,6 @@ import (
 type Option func(*Client) error
 
 type Client struct {
-	ComLogClient
-
 	*options
 	serverAddr string
 	context    context.Context
@@ -152,8 +150,9 @@ func WithMaxSendRecvMsgSize(sendBytes, recvBytes int) Option {
 	}
 }
 
-// WithBatchSize configures the upper bound batch size to use for buffering.
-// The client will attempt to batch records together into fewer requests to help performance on both client and server.
+// WithAsyncProducerBatchSize configures the upper bound batch size to use for buffering with the async producer.
+// The async producer will attempt to batch records together into fewer requests to help performance on both
+// client and server.
 // A small batch size will make buffering less common and so more requests to the server. If size is set to 0 this
 // will entirely disable batching. On the opposite if the size is very large, this can be wastfull of memory as we
 // will always allocate in advance a buffer with the specified size (You can choose to not set this option and work
@@ -161,23 +160,33 @@ func WithMaxSendRecvMsgSize(sendBytes, recvBytes int) Option {
 //
 // This size represents the upper limit of the batch size to send, i.e. if the buffer contains fewer records than
 // this size, we will "linger" `WithLinger` while waiting for other records to appear and when the time comes,
-// we will send the batch to the server even if there is room for other records.
-func WithBatchSize(size int) Option {
+// we will send the batch to the server even if there is still room for other records.
+func WithAsyncProducerBatchSize(size int) Option {
 	return func(c *Client) error {
 		c.batch.batchSize = size
 		return nil
 	}
 }
 
-// WithLinger configures the upper bound awaiting time to wait for other records to show up in order
-// to send them in a batch to the server. This option is similar to `linger.ms` in Kafka Producer
-// and also it is analogous to Nagle’s algorithm in TCP.
+// WithAsyncProducerLinger configures the upper bound awaiting time to wait for other records to show up in order
+// to send them in a batch to the server with the async producer.
+// This option is similar to `linger.ms` in Kafka Producer and also it is analogous to Nagle’s algorithm in TCP.
 //
 // This time represents the upper limit of waiting which means if the buffer is already full of records
 // the batch will be sent immediately regardless of this option. The default is 0.
-func WithLinger(linger time.Duration) Option {
+func WithAsyncProducerLinger(linger time.Duration) Option {
 	return func(c *Client) error {
 		c.batch.linger = linger
+		return nil
+	}
+}
+
+// WithAsyncProducerReturnErrors enables (or not) receiving errors from the `Errors` channel when records failed
+// to be delivered.
+// If set to true, you MUST read from the respective channel `Errors` to prevent deadlock.
+func WithAsyncProducerReturnErrors(enabled bool) Option {
+	return func(c *Client) error {
+		c.pReturnErr.enabled = enabled
 		return nil
 	}
 }
@@ -237,6 +246,21 @@ func (c *Client) Dial() (*grpc.ClientConn, error) {
 	return grpc.DialContext(dctx, c.serverAddr, c.dialOpts...)
 }
 
+// Close shuts down the commit log client's connections.
+// It is required to call this function before a client object passes out of scope,
+// as it will otherwise leak memory.
+// You must close any Producers or Consumers using a client BEFORE you close the client.
+func (c *Client) Close() error {
+	c.lg.Info("Closing the commit log client")
+	c.cancel()
+	if c.conn != nil {
+		// TODO: wrap the grpc error
+		return c.conn.Close()
+	}
+
+	return c.context.Err()
+}
+
 // Creates new commit log gRPC client with the given server address and options.
 // The context is the default client context, it can be used to cancel grpc dial
 // out and other operations that do not have an explicit context.
@@ -281,7 +305,6 @@ func New(ctx context.Context, serverAddr string, opts ...Option) (*Client, error
 	cli.lg.Info("Start background dial", zap.String("target", cli.serverAddr))
 
 	cli.conn = conn
-	cli.ComLogClient = NewClientComLog(cli)
 	// client.Auth = NewAuth(client) // TODO
 
 	return cli, nil

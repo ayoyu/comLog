@@ -28,7 +28,7 @@ What is a commitLog ? some resources to check out if you are curious:
 $ make default_server
 ```
 
-- Send records with the client:
+- Async Producer example:
 
 ```golang
 package main
@@ -53,57 +53,87 @@ func main() {
 	cli, err := client.New(
 		context.TODO(),
 		"localhost:50052",
-		client.WithLinger(1*time.Second),
-		client.WithBatchSize(40),
+		client.WithAsyncProducerLinger(1*time.Second),
+		client.WithAsyncProducerBatchSize(40),
 		client.WithLogger(lg),
+		client.WithAsyncProducerReturnErrors(true),
 	)
 	if err != nil {
 		panic(err.Error())
 	}
-	defer cli.Close()
+	defer func() {
+		if err := cli.Close(); err != nil {
+			panic(err.Error())
+		}
+	}()
+
+	asyncProducer := client.NewAsyncProducer(cli)
+	defer func() {
+		if err := asyncProducer.Close(); err != nil {
+			panic(err.Error())
+		}
+	}()
 
 	records := [][]byte{
 		[]byte("aaaaaaaaaa"),
 		[]byte("bbbbbbbbbb"),
 		[]byte("cccccccccc"),
 		[]byte("dddddddddd"),
+
 		[]byte("eeeeeeeeee"),
 		[]byte("ffffffffff"),
 		[]byte("gggggggggg"),
 		[]byte("hhhhhhhhhh"),
+
 		[]byte("iiiiiiiiii"),
 		[]byte("jjjjjjjjjj"),
 		[]byte("kkkkkkkkkk"),
 		[]byte("llllllllll"),
+
 		[]byte("mmmmmmmmmm"),
 		[]byte("nnnnnnnnnn"),
 		[]byte("oooooooooo"),
 		[]byte("pppppppppp"),
+
 		[]byte("qqqqqqqqqq"),
 		[]byte("rrrrrrrrrr"),
 	}
-	done := make(chan struct{}, len(records))
 
 	callback := func(resp *client.SendAppendResponse, wait *sync.WaitGroup) {
-		fmt.Println("Callback fired, Response: ", resp)
-
-		done <- struct{}{}
+		fmt.Println("Callback fired; Response: ", resp)
 		wait.Done()
 	}
 
-	fmt.Println("Start calling Send")
+	done := make(chan struct{})
+	defer close(done)
+	// The goroutine responsible for getting the errors during the records production stream.
+	go func() {
+		for {
+			select {
+			case err := <-asyncProducer.Errors():
+				fmt.Println("async producer error during the records production stream: ", err)
+			case <-done:
+				fmt.Println("Done, Bye !")
+				return
+			}
+		}
+	}()
+
+	fmt.Println("Start calling the Send operation")
 	for _, record := range records {
-		err := cli.Send(context.TODO(), &client.Record{Data: record}, callback)
+		err := asyncProducer.Send(context.TODO(), &client.Record{Data: record}, callback)
 
 		if err != nil {
 			panic(err.Error())
 		}
 	}
-	fmt.Println("Done Calling Send")
+	fmt.Println("Done calling the Send operation")
 
-	for i := 0; i < len(records); i++ {
-		<-done
-	}
+	// To check the case when the wait linger time get triggered with the
+	// `client.WithAsyncProducerLinger(1*time.Second)` before closing both
+	// the producer and the client.
+	time.Sleep(2 * time.Second)
+
 }
 ```
 

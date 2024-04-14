@@ -118,7 +118,6 @@ func (s *ComLogServer) Append(ctx context.Context, record *pb.Record) (*pb.Appen
 	}, nil
 }
 
-// FIXME
 func (s *ComLogServer) BatchAppend(ctx context.Context, records *pb.BatchRecords) (*pb.BatchAppendResp, error) {
 	ctx, cancelFunc := context.WithCancel(ctx)
 	defer cancelFunc()
@@ -167,7 +166,6 @@ Loop:
 
 		case res := <-resCh:
 			if res.err != nil {
-				// In case if any error we break and we cancel the other goroutines with the defered `cancelFunc`
 				err = fmt.Errorf("failed appending record at index %d. Original error: %w", res.resp.Index, res.err)
 				break Loop
 			}

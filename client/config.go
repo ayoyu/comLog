@@ -208,12 +208,17 @@ type batchOption struct {
 	linger time.Duration
 }
 
+type producerReturnErrorsOption struct {
+	enabled bool
+}
+
 type options struct {
-	retry retryOption
-	auth  authOption
-	tls   tlsOption
-	call  callOption
-	dial  dialOption
-	alive keepAliveProbeOption
-	batch batchOption
+	retry      retryOption
+	auth       authOption
+	tls        tlsOption
+	call       callOption
+	dial       dialOption
+	alive      keepAliveProbeOption
+	batch      batchOption
+	pReturnErr producerReturnErrorsOption
 }
