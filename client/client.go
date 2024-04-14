@@ -191,6 +191,17 @@ func WithAsyncProducerReturnErrors(enabled bool) Option {
 	}
 }
 
+// WithConsumerOffsetsAutoCommit enables The Automatic Offset Committing, i.e. whether or not to auto-commit updated
+// offsets. `Interval` indicates how frequently to commit updated offsets. Ineffective unless auto-commit is enabled
+// (default 1s)
+func WithConsumerOffsetsAutoCommit(enabled bool, interval time.Duration) Option {
+	return func(c *Client) error {
+		c.cOffsetsAutoCommit.enabled = enabled
+		c.cOffsetsAutoCommit.interval = interval
+		return nil
+	}
+}
+
 func (c *Client) addDialOpts() {
 	if c.retry.serviceCfgRawJSON != "" {
 		c.dialOpts = append(c.dialOpts, grpc.WithDefaultServiceConfig(c.retry.serviceCfgRawJSON))
@@ -279,6 +290,10 @@ func New(ctx context.Context, serverAddr string, opts ...Option) (*Client, error
 			batch: batchOption{
 				batchSize: defaultBatchSize,
 				linger:    time.Duration(0),
+			},
+			cOffsetsAutoCommit: consumerOffsetsAutoCommit{
+				enabled:  true,
+				interval: 1 * time.Second,
 			},
 		},
 	}

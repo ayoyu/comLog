@@ -212,13 +212,21 @@ type producerReturnErrorsOption struct {
 	enabled bool
 }
 
+type consumerOffsetsAutoCommit struct {
+	enabled  bool
+	interval time.Duration
+}
+
 type options struct {
-	retry      retryOption
-	auth       authOption
-	tls        tlsOption
-	call       callOption
-	dial       dialOption
-	alive      keepAliveProbeOption
+	retry retryOption
+	auth  authOption
+	tls   tlsOption
+	call  callOption
+	dial  dialOption
+	alive keepAliveProbeOption
+
 	batch      batchOption
 	pReturnErr producerReturnErrorsOption
+
+	cOffsetsAutoCommit consumerOffsetsAutoCommit
 }
