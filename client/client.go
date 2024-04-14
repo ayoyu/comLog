@@ -15,8 +15,6 @@ import (
 type Option func(*Client) error
 
 type Client struct {
-	ComLogClient
-
 	*options
 	serverAddr string
 	context    context.Context
@@ -248,6 +246,21 @@ func (c *Client) Dial() (*grpc.ClientConn, error) {
 	return grpc.DialContext(dctx, c.serverAddr, c.dialOpts...)
 }
 
+// Close shuts down the commit log client's connections.
+// It is required to call this function before a client object passes out of scope,
+// as it will otherwise leak memory.
+// You must close any Producers or Consumers using a client BEFORE you close the client.
+func (c *Client) Close() error {
+	c.lg.Info("Closing the commit log client")
+	c.cancel()
+	if c.conn != nil {
+		// TODO: wrap the grpc error
+		return c.conn.Close()
+	}
+
+	return c.context.Err()
+}
+
 // Creates new commit log gRPC client with the given server address and options.
 // The context is the default client context, it can be used to cancel grpc dial
 // out and other operations that do not have an explicit context.
@@ -292,7 +305,6 @@ func New(ctx context.Context, serverAddr string, opts ...Option) (*Client, error
 	cli.lg.Info("Start background dial", zap.String("target", cli.serverAddr))
 
 	cli.conn = conn
-	cli.ComLogClient = NewClientComLog(cli)
 	// client.Auth = NewAuth(client) // TODO
 
 	return cli, nil
