@@ -9,6 +9,7 @@ import (
 	pb "github.com/ayoyu/comLog/api"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/status"
 )
 
 type (
@@ -80,7 +81,7 @@ func (c *callbacks) setStore(newStore map[int]OnCompletionSendCallback) {
 type asyncProducer struct {
 	remote   pb.ComLogRpcClient
 	callOpts []grpc.CallOption
-	batchOpt batchOption
+	opts     asyncProducerOptions
 
 	accumulator *recordAccumulator
 
@@ -92,26 +93,24 @@ type asyncProducer struct {
 	closeCh         chan chan error
 	streamRecvErrCh chan error
 
-	enableReturnProducerErr bool
-	producerErr             chan error
+	producerErr chan error
 
 	lg *zap.Logger
 }
 
 func NewAsyncProducer(c *Client) AsyncProducer {
 	p := &asyncProducer{
-		remote:                  pb.NewComLogRpcClient(c.conn),
-		callOpts:                c.callOpts,
-		batchOpt:                c.batch,
-		accumulator:             newRecordAccumulator(c.batch.batchSize),
-		prevcallbacks:           newCallbacks(c.batch.batchSize),
-		currcallbacks:           newCallbacks(c.batch.batchSize),
-		wait:                    new(sync.WaitGroup),
-		closeCh:                 make(chan chan error),
-		streamRecvErrCh:         make(chan error, 1),
-		enableReturnProducerErr: c.pReturnErr.enabled,
-		producerErr:             make(chan error),
-		lg:                      c.lg,
+		remote:          pb.NewComLogRpcClient(c.conn),
+		callOpts:        c.callOpts,
+		opts:            c.asyncProducerOpts,
+		accumulator:     newRecordAccumulator(c.asyncProducerOpts.batch.batchSize),
+		prevcallbacks:   newCallbacks(c.asyncProducerOpts.batch.batchSize),
+		currcallbacks:   newCallbacks(c.asyncProducerOpts.batch.batchSize),
+		wait:            new(sync.WaitGroup),
+		closeCh:         make(chan chan error),
+		streamRecvErrCh: make(chan error, 1),
+		producerErr:     make(chan error),
+		lg:              c.lg,
 	}
 
 	go p.sendLoop()
@@ -139,7 +138,6 @@ func (p *asyncProducer) sendBatch() error {
 
 	stream, err := p.remote.StreamBatchAppend(context.TODO(), &batch, p.callOpts...)
 	if err != nil {
-		p.lg.Error("Failed to send the stream batch records", zap.Error(err))
 		return err
 	}
 	// Once we set the prevcallbacks, the current callbacks can be overwritten when we
@@ -180,20 +178,23 @@ func (p *asyncProducer) sendBatch() error {
 }
 
 func (p *asyncProducer) sendLoop() {
-	lingerTimer := time.NewTimer(p.batchOpt.linger)
+	lingerTimer := time.NewTimer(p.opts.batch.linger)
 	defer lingerTimer.Stop()
 
 	for {
 		select {
 		case err := <-p.streamRecvErrCh:
-			if p.enableReturnProducerErr {
+			if p.opts.returnErrors.enabled {
 				p.producerErr <- err
+			} else {
+				p.lg.Error(status.Convert(err).Message())
 			}
 
 		case closeErrCh := <-p.closeCh:
 			p.lg.Info("Closing the async producer. Sending the remaining records from the accumulator "+
 				"and waiting for all the current operations to finish...",
 				zap.Int64("remaining records number", p.accumulator.recordsSize()))
+
 			finalErr := p.sendBatch()
 			// We don't really need to reset the accumulator next-positions as we are closing.
 			p.wait.Wait()
@@ -204,21 +205,31 @@ func (p *asyncProducer) sendLoop() {
 
 		case <-p.accumulator.startSending():
 			p.lg.Info("Accumulator record buffer is full. Start sending the batch records...")
-			if err := p.sendBatch(); p.enableReturnProducerErr && err != nil {
-				p.producerErr <- err
+
+			if err := p.sendBatch(); err != nil {
+				if p.opts.returnErrors.enabled {
+					p.producerErr <- err
+				} else {
+					p.lg.Error(status.Convert(err).Message())
+				}
 			}
 
 			p.accumulator.doneSending() <- struct{}{}
 
 		case <-lingerTimer.C:
 			p.lg.Info("Wait linger time is triggered. Start sending the batch records...",
-				zap.Duration("Wait linger time", p.batchOpt.linger))
-			if err := p.sendBatch(); p.enableReturnProducerErr && err != nil {
-				p.producerErr <- err
+				zap.Duration("Wait linger time", p.opts.batch.linger))
+
+			if err := p.sendBatch(); err != nil {
+				if p.opts.returnErrors.enabled {
+					p.producerErr <- err
+				} else {
+					p.lg.Error(status.Convert(err).Message())
+				}
 			}
 
 			p.accumulator.resetNextOffsetAndIndex()
-			lingerTimer.Reset(p.batchOpt.linger)
+			lingerTimer.Reset(p.opts.batch.linger)
 		}
 	}
 }
