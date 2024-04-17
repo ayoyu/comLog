@@ -57,7 +57,7 @@ func WithRetryPolicy(opt RetryOptionParameters) Option {
 		if err != nil {
 			return err
 		}
-		c.retry.serviceCfgRawJSON = string(b)
+		c.retryOpt.serviceCfgRawJSON = string(b)
 		return nil
 	}
 }
@@ -65,8 +65,8 @@ func WithRetryPolicy(opt RetryOptionParameters) Option {
 // TODO
 func WithAuth(username, password string) Option {
 	return func(c *Client) error {
-		c.auth.username = username
-		c.auth.password = password
+		c.authOpt.username = username
+		c.authOpt.password = password
 		return nil
 	}
 }
@@ -80,7 +80,7 @@ func WithTLS(rootCAFile, serverNameOverride string) Option {
 		if err != nil {
 			return err
 		}
-		c.tls.creds = creds
+		c.tlsOpt.creds = creds
 		return nil
 	}
 }
@@ -89,7 +89,7 @@ func WithTLS(rootCAFile, serverNameOverride string) Option {
 // This is valid if and only if WithBlock() is present, if dial is non-blocking the timeout will be ignored.
 func WithDialTimeout(timeout time.Duration) Option {
 	return func(c *Client) error {
-		c.dial.dialTimeout = timeout
+		c.dialOpt.dialTimeout = timeout
 		return nil
 	}
 }
@@ -102,7 +102,7 @@ func WithDialTimeout(timeout time.Duration) Option {
 // https://github.com/grpc/grpc-go/blob/master/Documentation/anti-patterns.md
 func WithDialBlock() Option {
 	return func(c *Client) error {
-		c.dial.dialBlock = true
+		c.dialOpt.dialBlock = true
 		return nil
 	}
 }
@@ -114,19 +114,22 @@ func WithDialBlock() Option {
 // to the server without any active streams(RPCs).
 func WithKeepAliveProbe(dialTime, dialTimeout time.Duration, permitWithoutStream bool) Option {
 	return func(c *Client) error {
-		c.alive.dialKeepAliveTime = dialTime
-		c.alive.dialKeepAliveTimeout = dialTimeout
-		c.alive.permitWithoutStream = permitWithoutStream
+		c.aliveOpt.dialKeepAliveTime = dialTime
+		c.aliveOpt.dialKeepAliveTimeout = dialTimeout
+		c.aliveOpt.permitWithoutStream = permitWithoutStream
 		return nil
 	}
 }
 
-// WithMaxCallSendRecvMsgSize configures the client-side request/response send/receive limit sizein bytes.
+// WithMaxCallSendRecvMsgSize configures the client-side request/response send/receive limit size in bytes.
 // The default values for `sendBytes` and `recvBytes` if they are not set are 2 MB (= 2 * 1024 * 1024) and
 // `math.MaxInt32` respectively.
 // Make sure that "client-side send limit < server-side default send/recv limit" and
 // "client-side receive limit >= server-side default send/recv limit" because range response
 // can easily exceed request send limits
+//
+// TODO: Since recently we seperated the client API into a producer/consumer API. We must also seperate this
+// option btw the two. (The producer only sends and the consumer only receives). See sarama.config.Fetch
 func WithMaxSendRecvMsgSize(sendBytes, recvBytes int) Option {
 	return func(c *Client) error {
 		if recvBytes > 0 {
@@ -144,8 +147,8 @@ func WithMaxSendRecvMsgSize(sendBytes, recvBytes int) Option {
 				)
 			}
 		}
-		c.call.maxCallSendMsgSize = sendBytes
-		c.call.maxCallRecvMsgSize = recvBytes
+		c.callOpt.maxCallSendMsgSize = sendBytes
+		c.callOpt.maxCallRecvMsgSize = recvBytes
 		return nil
 	}
 }
@@ -163,7 +166,7 @@ func WithMaxSendRecvMsgSize(sendBytes, recvBytes int) Option {
 // we will send the batch to the server even if there is still room for other records.
 func WithAsyncProducerBatchSize(size int) Option {
 	return func(c *Client) error {
-		c.batch.batchSize = size
+		c.asyncProducerOpts.batch.batchSize = size
 		return nil
 	}
 }
@@ -176,7 +179,7 @@ func WithAsyncProducerBatchSize(size int) Option {
 // the batch will be sent immediately regardless of this option. The default is 0.
 func WithAsyncProducerLinger(linger time.Duration) Option {
 	return func(c *Client) error {
-		c.batch.linger = linger
+		c.asyncProducerOpts.batch.linger = linger
 		return nil
 	}
 }
@@ -186,7 +189,7 @@ func WithAsyncProducerLinger(linger time.Duration) Option {
 // If set to true, you MUST read from the respective channel `Errors` to prevent deadlock.
 func WithAsyncProducerReturnErrors(enabled bool) Option {
 	return func(c *Client) error {
-		c.pReturnErr.enabled = enabled
+		c.asyncProducerOpts.returnErrors.enabled = enabled
 		return nil
 	}
 }
@@ -196,36 +199,47 @@ func WithAsyncProducerReturnErrors(enabled bool) Option {
 // (default 1s)
 func WithConsumerOffsetsAutoCommit(enabled bool, interval time.Duration) Option {
 	return func(c *Client) error {
-		c.cOffsetsAutoCommit.enabled = enabled
-		c.cOffsetsAutoCommit.interval = interval
+		c.consumerOpts.offsetsAutoCommit.enabled = enabled
+		c.consumerOpts.offsetsAutoCommit.interval = interval
+		return nil
+	}
+}
+
+// WithAutoOffsetResetProperty controlls the behavior when we `Seek` manually into an invalid offset, i.e. smaller than
+// the log start or larger than the log end offsets.
+// If this is set to "earliest", the next poll will return records from the starting offset. If it is set to "latest",
+// it will seek to the last offset.
+func WithConsumerAutoOffsetResetProperty(resetOffset ResetOffset) Option {
+	return func(c *Client) error {
+		c.consumerOpts.autoOffsetResetProperty.initial = resetOffset
 		return nil
 	}
 }
 
 func (c *Client) addDialOpts() {
-	if c.retry.serviceCfgRawJSON != "" {
-		c.dialOpts = append(c.dialOpts, grpc.WithDefaultServiceConfig(c.retry.serviceCfgRawJSON))
+	if c.retryOpt.serviceCfgRawJSON != "" {
+		c.dialOpts = append(c.dialOpts, grpc.WithDefaultServiceConfig(c.retryOpt.serviceCfgRawJSON))
 	} else {
 		c.dialOpts = append(c.dialOpts, defaultServiceConfig)
 	}
 
-	if c.tls.creds != nil {
-		c.dialOpts = append(c.dialOpts, grpc.WithTransportCredentials(c.tls.creds))
+	if c.tlsOpt.creds != nil {
+		c.dialOpts = append(c.dialOpts, grpc.WithTransportCredentials(c.tlsOpt.creds))
 	} else {
 		c.dialOpts = append(c.dialOpts, defaultTLSInsecureCreds)
 	}
 
-	if c.alive.dialKeepAliveTime > 0 {
+	if c.aliveOpt.dialKeepAliveTime > 0 {
 		// TODO: define default probe values ?
 		params := keepalive.ClientParameters{
-			Time:                c.alive.dialKeepAliveTime,
-			Timeout:             c.alive.dialKeepAliveTimeout,
-			PermitWithoutStream: c.alive.permitWithoutStream,
+			Time:                c.aliveOpt.dialKeepAliveTime,
+			Timeout:             c.aliveOpt.dialKeepAliveTimeout,
+			PermitWithoutStream: c.aliveOpt.permitWithoutStream,
 		}
 		c.dialOpts = append(c.dialOpts, grpc.WithKeepaliveParams(params))
 	}
 
-	if c.dial.dialBlock {
+	if c.dialOpt.dialBlock {
 		c.dialOpts = append(c.dialOpts, grpc.WithBlock())
 	}
 }
@@ -233,14 +247,14 @@ func (c *Client) addDialOpts() {
 func (c *Client) addCallOpts() {
 	c.callOpts = append(c.callOpts, defaultWaitForReady)
 
-	if c.call.maxCallSendMsgSize > 0 {
-		c.callOpts = append(c.callOpts, grpc.MaxCallSendMsgSize(c.call.maxCallSendMsgSize))
+	if c.callOpt.maxCallSendMsgSize > 0 {
+		c.callOpts = append(c.callOpts, grpc.MaxCallSendMsgSize(c.callOpt.maxCallSendMsgSize))
 	} else {
 		c.callOpts = append(c.callOpts, defaultMaxCallSendMsgSize)
 	}
 
-	if c.call.maxCallRecvMsgSize > 0 {
-		c.callOpts = append(c.callOpts, grpc.MaxCallRecvMsgSize(c.call.maxCallRecvMsgSize))
+	if c.callOpt.maxCallRecvMsgSize > 0 {
+		c.callOpts = append(c.callOpts, grpc.MaxCallRecvMsgSize(c.callOpt.maxCallRecvMsgSize))
 	} else {
 		c.callOpts = append(c.callOpts, defaultMaxCallRecvMsgSize)
 	}
@@ -248,9 +262,9 @@ func (c *Client) addCallOpts() {
 
 func (c *Client) Dial() (*grpc.ClientConn, error) {
 	dctx := c.context
-	if c.dial.dialTimeout > 0 {
+	if c.dialOpt.dialTimeout > 0 {
 		var cancel context.CancelFunc
-		dctx, cancel = context.WithTimeout(c.context, c.dial.dialTimeout)
+		dctx, cancel = context.WithTimeout(c.context, c.dialOpt.dialTimeout)
 		defer cancel()
 	}
 
@@ -287,13 +301,23 @@ func New(ctx context.Context, serverAddr string, opts ...Option) (*Client, error
 		context:    ctx,
 		cancel:     cancel,
 		options: &options{
-			batch: batchOption{
-				batchSize: defaultBatchSize,
-				linger:    time.Duration(0),
+			asyncProducerOpts: asyncProducerOptions{
+				batch: struct {
+					batchSize int
+					linger    time.Duration
+				}{
+					batchSize: defaultBatchSize,
+					linger:    time.Duration(0),
+				},
 			},
-			cOffsetsAutoCommit: consumerOffsetsAutoCommit{
-				enabled:  true,
-				interval: 1 * time.Second,
+			consumerOpts: consumerOptions{
+				offsetsAutoCommit: struct {
+					enabled  bool
+					interval time.Duration
+				}{
+					enabled:  true,
+					interval: 1 * time.Second,
+				},
 			},
 		},
 	}

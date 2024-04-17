@@ -28,11 +28,11 @@ type Consumer interface {
 	// The next Consumer Record which will be retrieved when `Poll(timeout)` is invoked will have the offset specified,
 	// given that a record with that offset exists.
 	//
-	// Seeking to the offset smaller than the log start offset or larger than the log end offset means an invalid offset
+	// Note: Seeking to the offset smaller than the log start offset or larger than the log end offset means an invalid offset
 	// is reached. When we hit this case, the invalid offset behaviour is controlled by the `Client.WithAutoOffsetResetProperty`.
 	// If this is set to "earliest", the next poll will return records from the starting offset. If it is set to "latest",
-	// it will seek to the last offset (similar to `seekToEnd()`). If it is set to "nil", an grpc `ErrOffsetOutOfRange`
-	// will be returned.
+	// it will seek to the last offset (similar to `seekToEnd()`).
+	// If it is set to "nil", a grpc `ErrOffsetOutOfRange` will be returned.
 	Seek(offset *Offset) error
 	SeekToEnd()
 	SeekToBegining()
