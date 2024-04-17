@@ -48,29 +48,31 @@ type AsyncProducer interface {
 	Close() error
 }
 
-type callbacks struct {
+type onCompletioncallbacks struct {
 	mu    sync.RWMutex
 	store map[int]OnCompletionSendCallback
 }
 
-func newCallbacks(size int) *callbacks {
-	return &callbacks{store: make(map[int]OnCompletionSendCallback, size)}
+func newOnCompletioncallbacks() *onCompletioncallbacks {
+	return &onCompletioncallbacks{
+		store: make(map[int]OnCompletionSendCallback),
+	}
 }
 
-func (c *callbacks) put(key int, val OnCompletionSendCallback) {
+func (c *onCompletioncallbacks) put(key int, val OnCompletionSendCallback) {
 	c.mu.Lock()
 	c.store[key] = val
 	c.mu.Unlock()
 }
 
-func (c *callbacks) get(key int) (OnCompletionSendCallback, bool) {
+func (c *onCompletioncallbacks) get(key int) (OnCompletionSendCallback, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	val, ok := c.store[key]
 	return val, ok
 }
 
-func (c *callbacks) setStore(newStore map[int]OnCompletionSendCallback) {
+func (c *onCompletioncallbacks) setStoreFrom(newStore map[int]OnCompletionSendCallback) {
 	c.mu.Lock()
 	for k, v := range newStore {
 		c.store[k] = v
@@ -85,8 +87,8 @@ type asyncProducer struct {
 
 	accumulator *recordAccumulator
 
-	prevcallbacks *callbacks
-	currcallbacks *callbacks
+	prevcallbacks *onCompletioncallbacks
+	currcallbacks *onCompletioncallbacks
 
 	wait *sync.WaitGroup
 
@@ -104,8 +106,8 @@ func NewAsyncProducer(c *Client) AsyncProducer {
 		callOpts:        c.callOpts,
 		opts:            c.asyncProducerOpts,
 		accumulator:     newRecordAccumulator(c.asyncProducerOpts.batch.batchSize),
-		prevcallbacks:   newCallbacks(c.asyncProducerOpts.batch.batchSize),
-		currcallbacks:   newCallbacks(c.asyncProducerOpts.batch.batchSize),
+		prevcallbacks:   newOnCompletioncallbacks(),
+		currcallbacks:   newOnCompletioncallbacks(),
 		wait:            new(sync.WaitGroup),
 		closeCh:         make(chan chan error),
 		streamRecvErrCh: make(chan error, 1),
@@ -144,7 +146,15 @@ func (p *asyncProducer) sendBatch() error {
 	// send the doneSending signal to the accumulator. In this case the accumulator can continue
 	// adding next record without blocking to wait for the whole stream receive operation
 	// that is happening in parallel.
-	p.prevcallbacks.setStore(p.currcallbacks.store)
+	//
+	// Note: The keys in prevcallbacks and currcallbacks will be **almost** the same on every send operation,
+	// specially if we are always sending the same amount of records of the same type.
+	// Because the keys are the offsets inside`recordAccumulator.indexes`, and `recordAccumulator.resetNextOffsetAndIndex`
+	// will reset on every iteration those offsets. For this reason we will not have the case where the store map grows
+	// and then for the nexts send operations, the available rooms are not used anymore, specially when we know that
+	// the map in go can only grow (more buckets) and it never shrinks even we use `delete`.
+	// see https://github.com/golang/go/issues/20135
+	p.prevcallbacks.setStoreFrom(p.currcallbacks.store)
 
 	p.wait.Add(1)
 	go func() {
