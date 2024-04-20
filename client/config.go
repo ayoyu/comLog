@@ -215,11 +215,11 @@ type asyncProducerOptions struct {
 	}
 }
 
-type ResetOffset int
+type ResetOffset uint
 
 const (
-	NewestOffset ResetOffset = iota
-	OldestOffset
+	OldestOffset ResetOffset = iota
+	NewestOffset
 )
 
 type consumerOptions struct {

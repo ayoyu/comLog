@@ -40,10 +40,10 @@ type SyncProducer interface {
 	BatchAppend(ctx context.Context, batch *BatchRecord) (*BatchAppendResponse, error)
 }
 
-func NewSyncProducer(c *Client) SyncProducer {
+func NewSyncProducer(c Client) SyncProducer {
 	p := &syncProducer{
-		remote:   pb.NewComLogRpcClient(c.conn),
-		callOpts: c.callOpts,
+		remote:   pb.NewComLogRpcClient(c.RpcConnection()),
+		callOpts: c.RpcCallOptions(),
 	}
 
 	return p

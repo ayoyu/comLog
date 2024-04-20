@@ -39,7 +39,8 @@ type AsyncProducer interface {
 
 	// Errors is the error output channel back to the user. If `client.WithAsyncProducerReturnErrors` is set to true,
 	// You MUST read from this channel or the Producer will **Deadlock**.
-	// Otherwise if set to false (by default), this will prevents errors to be communicated back to the user.
+	// Otherwise if set to false (by default), this will prevents errors to be communicated back to the user,
+	// and they will be logged instead if the logger option with `client.WithLogger` is defined.
 	Errors() <-chan error
 
 	// Close shuts down the async producer and sends any remaining buffered records from the record accumulator
@@ -100,19 +101,20 @@ type asyncProducer struct {
 	lg *zap.Logger
 }
 
-func NewAsyncProducer(c *Client) AsyncProducer {
+func NewAsyncProducer(c Client) AsyncProducer {
+	opts := c.Options()
 	p := &asyncProducer{
-		remote:          pb.NewComLogRpcClient(c.conn),
-		callOpts:        c.callOpts,
-		opts:            c.asyncProducerOpts,
-		accumulator:     newRecordAccumulator(c.asyncProducerOpts.batch.batchSize),
+		remote:          pb.NewComLogRpcClient(c.RpcConnection()),
+		callOpts:        c.RpcCallOptions(),
+		opts:            opts.asyncProducerOpts,
+		accumulator:     newRecordAccumulator(opts.asyncProducerOpts.batch.batchSize),
 		prevcallbacks:   newOnCompletioncallbacks(),
 		currcallbacks:   newOnCompletioncallbacks(),
 		wait:            new(sync.WaitGroup),
 		closeCh:         make(chan chan error),
 		streamRecvErrCh: make(chan error, 1),
 		producerErr:     make(chan error),
-		lg:              c.lg,
+		lg:              c.Logger(),
 	}
 
 	go p.sendLoop()

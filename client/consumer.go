@@ -49,16 +49,16 @@ type Consumer interface {
 	CommitSync(timeout time.Duration) error
 }
 
-// TODO: Implements the Consumer Interface.
+// TODO: DONT USE YET. Implements the Consumer Interface.
 type consumer struct {
 	remote   pb.ComLogRpcClient
 	callOpts []grpc.CallOption
 }
 
-func NewConsumer(c *Client) *consumer {
+func NewConsumer(c Client) *consumer {
 	return &consumer{
-		remote:   pb.NewComLogRpcClient(c.conn),
-		callOpts: c.callOpts,
+		remote:   pb.NewComLogRpcClient(c.RpcConnection()),
+		callOpts: c.RpcCallOptions(),
 	}
 }
 
