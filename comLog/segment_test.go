@@ -21,12 +21,12 @@ func TestNewSegment_EmptyIndexFile(t *testing.T) {
 	var baseOffset uint64 = 0
 	segment, err := NewSegment(dirpath, DefaultMaxBytesStore, DefaultMaxBytesIndex, baseOffset)
 	assert.Nil(t, err)
-	assert.IsType(t, &store{}, segment.storeFile)
-	assert.IsType(t, &index{}, segment.indexFile)
+	assert.IsType(t, &store{}, segment.store)
+	assert.IsType(t, &index{}, segment.index)
 	assert.Equal(t, baseOffset, segment.baseOffset)
 	assert.Equal(t, baseOffset, segment.nextOffset)
 	assert.Equal(t, dirpath, segment.path)
-	t.Logf("dir: %s, storefile: %s, indexfile: %s", dirpath, segment.storeFile.name(), segment.indexFile.name())
+	t.Logf("dir: %s, storefile: %s, indexfile: %s", dirpath, segment.store.name(), segment.index.name())
 }
 
 func TestNewSegment_NotEmptyIndexFile(t *testing.T) {
@@ -46,7 +46,7 @@ func TestNewSegment_NotEmptyIndexFile(t *testing.T) {
 	segment, err := NewSegment(dirpath, DefaultMaxBytesStore, DefaultMaxBytesIndex, baseOffset)
 	assert.Nil(t, err)
 	assert.Equal(t, segment.nextOffset, baseOffset+2)
-	assert.Equal(t, int(segment.indexFile.nbrOfIndexes()), 2)
+	assert.Equal(t, int(segment.index.nbrOfIndexes()), 2)
 	removeTempDir(dirpath)
 }
 
