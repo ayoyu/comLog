@@ -29,18 +29,19 @@ var ErrNotActiveAnymore = errors.New("abort append, the pointed Segment is not a
 // The Segment structure that holds the pair index-store files.
 // It maintains the base Offset and keep track of the next Offset.
 type Segment struct {
-	mu    sync.RWMutex
-	store *store
-	index *index
 	// Specifies the first (or base) offset in the segment related to a record.
 	// It will be set from the previous segment nextOffset
 	baseOffset uint64
-	// Represents the next offset where the future record can be stored
-	nextOffset uint64
 	// The log data dir
 	path string
-	// Indicates wheter a segment is still the active segment or not anymore. Any segment when it get created
-	// it will active at the current time.
+
+	mu    sync.RWMutex
+	store *store
+	index *index
+	// Represents the next offset where the future record can be stored
+	nextOffset uint64
+	// Indicates wheter a segment is still the active segment or not anymore.
+	// Any segment when it get created it becomes the active segment at that time.
 	isActive bool
 	// Indicates wheter a segment is closed or not for append operations. For read operations the closed signal can
 	// be indicated directly from the closed underlying file store, but for append operations (append happens only on the active segment)
@@ -88,9 +89,7 @@ func NewSegment(dir string, stMaxBytes, idxMaxBytes, baseOffset uint64) (*Segmen
 		return nil, fmt.Errorf(segContext+"Failed to init the index. Err: %w", err)
 	}
 
-	// this will generalize also for existing files with a certain size
-	// (if size=0 this will be just the baseOffset)
-	nextOffset = index.nbrOfIndexes() + baseOffset
+	nextOffset = index.nbrOfIndexEntries() + baseOffset
 
 	newSeg.store = store
 	newSeg.index = index
@@ -100,7 +99,6 @@ func NewSegment(dir string, stMaxBytes, idxMaxBytes, baseOffset uint64) (*Segmen
 }
 
 func (seg *Segment) getStorePath() string {
-	// startOffset.store
 	return filepath.Join(seg.path, fmt.Sprintf(fileFormat, seg.baseOffset, storeFileSuffix))
 }
 
@@ -108,7 +106,7 @@ func (seg *Segment) getIndexPath() string {
 	return filepath.Join(seg.path, fmt.Sprintf(fileFormat, seg.baseOffset, indexFileSuffix))
 }
 
-// check if segment is full
+// isFull checks if the segment is full
 func (seg *Segment) isFull() bool {
 	// Even if this is a read operation we choose not to take a `RLock` in order to reduce EOF error appends
 	// from the index side when the log split is triggered and a delay append is still pending to append,
@@ -125,11 +123,10 @@ func (seg *Segment) isFull() bool {
 	// it will wait until the store.size trigger the maxed with missing appends
 	// (the index file contains fixed sequence of byte of length 16)
 	return seg.store.size >= seg.store.maxBytes ||
-		seg.index.maxBytes-seg.index.size < indexWidth
+		seg.index.maxBytes-seg.index.size < indexEntryWidth
 }
 
-// Append a new record to the segment.
-// It returns the offset, number of bytes written and an error if any
+// Append a new record to the segment. It returns the offset, number of bytes written and an error if any.
 func (seg *Segment) Append(record []byte) (currOffset uint64, nn int, err error) {
 	seg.mu.Lock()
 	defer seg.mu.Unlock()
@@ -171,34 +168,51 @@ func (seg *Segment) setIsActive(b bool) {
 	seg.mu.Unlock()
 }
 
+// getScaledOffset scales the given offset to the segment `baseOffset`.
+func (seg *Segment) getScaledOffset(offset int64) int64 {
+	if offset == -1 {
+		// The last entry
+		return -1
+	}
+
+	return offset - int64(seg.baseOffset)
+}
+
 // Read reads the record corresponding to the given offset.
 // It returns the number of bytes read, the record and an error if any
 func (seg *Segment) Read(offset int64) (nn int, record []byte, err error) {
 	var (
-		scaledOffset int64
-		pos          uint64
+		scaledOffset          int64
+		recordPositionAtStore uint64
 	)
-	// scale the offset to baseOffset
-	if offset == -1 {
-		scaledOffset = -1 // last entry
-	} else {
-		scaledOffset = offset - int64(seg.baseOffset)
-	}
+
+	scaledOffset = seg.getScaledOffset(offset)
 
 	seg.mu.RLock()
 	defer seg.mu.RUnlock()
 
-	pos, err = seg.index.read(scaledOffset)
+	recordPositionAtStore, err = seg.index.read(scaledOffset)
 	if err != nil {
-		return 0, nil, fmt.Errorf(segContext+"Failed to get record position from index file. Err: %w", err)
+		return 0, nil, fmt.Errorf(segContext+"Failed to get record store position from index file. Err: %w", err)
 	}
 
-	nn, record, err = seg.store.read(pos)
+	nn, record, err = seg.store.read(recordPositionAtStore)
 	if err != nil {
 		return 0, nil, fmt.Errorf(segContext+"Failed to get record from store file. Err: %w", err)
 	}
 
 	return nn, record, nil
+}
+
+func (seg *Segment) getStoreRecordPosition(offset int64) (uint64, error) {
+	scaledOffset := seg.getScaledOffset(offset)
+
+	seg.mu.RLock()
+	recordPositionAtStore, err := seg.index.read(scaledOffset)
+	seg.mu.RUnlock()
+
+	return recordPositionAtStore, err
+
 }
 
 // Flush/Commit the segment to flush back the store buffer to disk and synchronize synchronously or asynchronously
@@ -208,7 +222,7 @@ func (seg *Segment) Flush(idxSyncType IndexSyncType) error {
 	defer seg.mu.Unlock()
 	var err error
 
-	err = seg.store.writeBuf.Flush()
+	err = seg.store.buf.Flush()
 	if err != nil {
 		return fmt.Errorf(segContext+"Failed to flush the store buffer. Err: %w", err)
 	}
@@ -276,13 +290,14 @@ func (seg *Segment) Remove() error {
 
 // ReadAt reads from the given position in the store file linked to the segment
 // and put it in the given buffer.
+// ReadAt is a wrapper arround the store `os.File.ReadAt`.
 func (seg *Segment) ReadAt(buf []byte, storePos uint64) (nn int, err error) {
 	seg.mu.RLock()
 	defer seg.mu.RUnlock()
 
 	nn, err = seg.store.readAt(buf, storePos)
 	if err != nil {
-		return 0, fmt.Errorf(segContext+"Faild to read at position %d. Err: %w", storePos, err)
+		return 0, fmt.Errorf(segContext+"Faild to read from store at position %d. Err: %w", storePos, err)
 	}
 
 	return nn, nil

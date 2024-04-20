@@ -26,7 +26,7 @@ func TestNewStore(t *testing.T) {
 	assert.Nil(t, err)
 
 	// Size will access len(writeBuf.buf) where buf is []byte
-	assert.Equal(t, store.writeBuf.Size(), int(DefaultMaxBytesStore), "error: len(write.buf) != maxBytes")
+	assert.Equal(t, store.buf.Size(), int(DefaultMaxBytesStore), "error: len(write.buf) != maxBytes")
 	assert.Equal(t, store.size, uint64(fileInfo.Size()), "store.size != file.size")
 	assert.Equal(t, store.maxBytes, DefaultMaxBytesStore)
 	// remove temp test data
@@ -43,12 +43,12 @@ type StoreDataTestCases struct {
 func getStoreTestCases() []StoreDataTestCases {
 	key1, key2, key3 := "First Entry", "Second Entry", "Third Entry"
 	pos1 := uint64(0)
-	pos2 := uint64(len(key1)) + lenghtOfRecordSize        // from previous written key1
-	pos3 := pos2 + uint64(len(key2)) + lenghtOfRecordSize // from previous written key1+key2
+	pos2 := uint64(len(key1)) + recordLenWidthPrefix        // from previous written key1
+	pos3 := pos2 + uint64(len(key2)) + recordLenWidthPrefix // from previous written key1+key2
 	testcases := []StoreDataTestCases{
-		{key1, []byte(key1), len(key1) + lenghtOfRecordSize, pos1},
-		{key2, []byte(key2), len(key2) + lenghtOfRecordSize, pos2},
-		{key3, []byte(key3), len(key3) + lenghtOfRecordSize, pos3},
+		{key1, []byte(key1), len(key1) + recordLenWidthPrefix, pos1},
+		{key2, []byte(key2), len(key2) + recordLenWidthPrefix, pos2},
+		{key3, []byte(key3), len(key3) + recordLenWidthPrefix, pos3},
 	}
 	return testcases
 }
@@ -65,7 +65,7 @@ func TestStoreAppend(t *testing.T) {
 		assert.Equal(t, nn, case_s.nn, "nn written bytes is not correct")
 		assert.Equal(t, pos, case_s.pos, "curr pos of record is not correct")
 		curr_buffered_bytes_data += case_s.nn
-		assert.Equal(t, store.writeBuf.Buffered(), curr_buffered_bytes_data)
+		assert.Equal(t, store.buf.Buffered(), curr_buffered_bytes_data)
 	}
 	// remove temp test data
 	removeTempFile(store.file.Name())
@@ -128,5 +128,30 @@ func TestStoreName(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, store.name(), store.file.Name())
 	// remove temp test data
+	removeTempFile(store.file.Name())
+}
+
+func TestReadAt(t *testing.T) {
+	store, err := getStore(DefaultMaxBytesIndex)
+	assert.Nil(t, err)
+
+	testcases := getStoreTestCases()
+	for _, case_s := range testcases {
+		t.Logf("Write: " + case_s.casename)
+		nn, pos, err := store.append(case_s.record)
+		assert.Nil(t, err)
+
+		t.Logf("ReadAt: " + case_s.casename)
+		buf := make([]byte, nn)
+		mm, err := store.readAt(buf, pos)
+		assert.Nil(t, err)
+		assert.Equal(t, mm, case_s.nn, "# read bytes is wrong")
+
+		record := buf[recordLenWidthPrefix:]
+		assert.Equal(t, record, case_s.record, "record written != readed record")
+		t.Logf("ReadAt Record: %s", string(record))
+
+	}
+
 	removeTempFile(store.file.Name())
 }

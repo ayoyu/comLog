@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	offsetWidth   = 8
-	positionWidth = 8
-	indexWidth    = offsetWidth + positionWidth
-	indexContext  = "[index]: "
+	offsetWidth     = 8
+	positionWidth   = 8
+	indexEntryWidth = offsetWidth + positionWidth
+	indexContext    = "[index]: "
 )
 
 var ErrIndexOutOfRange = errors.New("no index exists with the given offset")
@@ -31,13 +31,15 @@ func newIndex(file *os.File, maxBytes uint64) (*index, error) {
 		mmap     gommap.MMap
 		fileInfo os.FileInfo
 	)
+
 	fileInfo, err = os.Stat(file.Name())
 	if err != nil {
-		return nil, fmt.Errorf(indexContext+"Failed to get fileInfo for file %s. Err: %w", file.Name(), err)
+		return nil, fmt.Errorf(indexContext+"Failed to get file stat for file %s. Err: %w", file.Name(), err)
 	}
+
 	// Real size before growing the file index
 	realFileSize := uint64(fileInfo.Size())
-	// grow the size of the file with spaces to maxByte to get a mmap-buf with the same size
+	// Grow the size of the file to get the mmap-buf with the maxBytes size
 	err = os.Truncate(file.Name(), int64(maxBytes))
 	if err != nil {
 		return nil, fmt.Errorf(indexContext+"Failed to truncate the index file %s to grow its size to maxBytes. Err: %w", file.Name(), err)
@@ -57,15 +59,15 @@ func newIndex(file *os.File, maxBytes uint64) (*index, error) {
 }
 
 func (idx *index) append(offset, position uint64) error {
-	var currPos uint64 = idx.size
-	// maxBytes = len(mmap)
-	if idx.maxBytes-currPos < indexWidth {
-		return fmt.Errorf(indexContext+"Failed to append (offset, position), no more space EOF. Err: %w", io.EOF)
+	currPos := idx.size
+
+	if idx.maxBytes-currPos < indexEntryWidth {
+		return fmt.Errorf(indexContext+"Failed to append (offset,position) tuple, no more space EOF. Err: %w", io.EOF)
 	}
 
 	encoding.PutUint64(idx.mmap[currPos:currPos+offsetWidth], offset)
-	encoding.PutUint64(idx.mmap[currPos+offsetWidth:currPos+indexWidth], position)
-	idx.size += indexWidth
+	encoding.PutUint64(idx.mmap[currPos+offsetWidth:currPos+indexEntryWidth], position)
+	idx.size += indexEntryWidth
 
 	return nil
 }
@@ -74,23 +76,24 @@ func (idx *index) read(offset int64) (uint64, error) {
 	var pos uint64
 	if offset == -1 {
 		// last entry
-		pos = idx.size - indexWidth
+		pos = idx.size - indexEntryWidth
 	} else {
-		pos = uint64(offset) * indexWidth
+		pos = uint64(offset) * indexEntryWidth
 	}
 
-	if pos+indexWidth > idx.size {
+	if pos+indexEntryWidth > idx.size {
 		// this pos is not yet filled
 		return 0, ErrIndexOutOfRange
 	}
-	var recordPos uint64 = encoding.Uint64(idx.mmap[pos+offsetWidth : pos+indexWidth])
 
-	return recordPos, nil
+	recordPositionAtStore := encoding.Uint64(idx.mmap[pos+offsetWidth : pos+indexEntryWidth])
+
+	return recordPositionAtStore, nil
 }
 
-// Returns nbr of index entries
-func (idx *index) nbrOfIndexes() uint64 {
-	return idx.size / indexWidth
+// nbrOfIndexes returns the nbr of index entries
+func (idx *index) nbrOfIndexEntries() uint64 {
+	return idx.size / indexEntryWidth
 }
 
 func (idx *index) close() error {

@@ -39,14 +39,14 @@ func TestNewSegment_NotEmptyIndexFile(t *testing.T) {
 	tempfile, err := os.OpenFile(tempfilepath, os.O_CREATE, 0666)
 	assert.Nil(t, err)
 	// simulate some writes of 2 entries -> 2 * 16 byte
-	var size int64 = 2 * indexWidth
+	var size int64 = 2 * indexEntryWidth
 	err = os.Truncate(tempfile.Name(), size)
 	assert.Nil(t, err)
 
 	segment, err := NewSegment(dirpath, DefaultMaxBytesStore, DefaultMaxBytesIndex, baseOffset)
 	assert.Nil(t, err)
 	assert.Equal(t, segment.nextOffset, baseOffset+2)
-	assert.Equal(t, int(segment.index.nbrOfIndexes()), 2)
+	assert.Equal(t, int(segment.index.nbrOfIndexEntries()), 2)
 	removeTempDir(dirpath)
 }
 
@@ -109,7 +109,7 @@ func TestSegmentBasicAppend(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Equal(t, offset, case_s.offset)
 		assert.Equal(t, seg.nextOffset, case_s.offset+1)
-		assert.Equal(t, nn, len(case_s.record)+lenghtOfRecordSize)
+		assert.Equal(t, nn, len(case_s.record)+recordLenWidthPrefix)
 	}
 
 }

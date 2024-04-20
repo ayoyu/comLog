@@ -127,20 +127,34 @@ func TestLogSegmentSearch(t *testing.T) {
 		{baseOffset: 20, nextOffset: 30},
 		{baseOffset: 30, nextOffset: 40},
 	}
-	cases := map[int64]*Segment{
-		0:  log.segments[0],
-		10: log.segments[1],
-		12: log.segments[1],
-		6:  log.segments[0],
-		20: log.segments[2],
-		31: log.segments[3],
-		-1: log.segments[3], // last seg (valid offset)
-		40: nil,
-		55: nil,
+	cases := map[int64]struct {
+		targetSeg *Segment
+		idx       int
+	}{
+		0: {targetSeg: log.segments[0], idx: 0},
+		// 0:  log.segments[0],
+		10: {targetSeg: log.segments[1], idx: 1},
+		// 10: log.segments[1],
+		12: {targetSeg: log.segments[1], idx: 1},
+		// 12: log.segments[1],
+		6: {targetSeg: log.segments[0], idx: 0},
+		// 6:  log.segments[0],
+		20: {targetSeg: log.segments[2], idx: 2},
+		// 20: log.segments[2],
+		31: {targetSeg: log.segments[3], idx: 3},
+		// 31: log.segments[3],
+		-1: {targetSeg: log.segments[3], idx: 3},
+		// -1: log.segments[3], // last seg (valid offset)
+		40: {targetSeg: nil, idx: 0},
+		// 40: nil,
+		// 55: nil,
+		55: {targetSeg: nil, idx: 0},
 	}
-	for offset, targetSeg := range cases {
-		ans := log.segmentSearch(offset)
-		assert.Equal(t, ans, targetSeg)
+
+	for offset, result := range cases {
+		seg, idx := log.segmentSearch(offset)
+		assert.Equal(t, seg, result.targetSeg)
+		assert.Equal(t, idx, result.idx)
 	}
 }
 
@@ -220,19 +234,19 @@ func TestSuccessfulCollectSegments(t *testing.T) {
 
 	// Collect ALL
 	// The log should be reconfigured because we will delete all the segments
-	lastOffset := log.LastOffset()
+	lastOffset := log.NewsetOffset()
 	t.Logf("The last tracked offset before collecting all the segments: %d", lastOffset)
 	err = log.CollectSegments(lastOffset)
 	assert.Nil(t, err)
 	assert.Equal(t, log.SegmentsSize(), 1, "The new nbr of segments should be equal 1")
-	assert.Equal(t, log.LastOffset(), uint64(0), "The last offset should be equal 0")
+	assert.Equal(t, log.NewsetOffset(), uint64(0), "The last offset should be equal 0")
 	assert.Equal(t, log.OldestOffset(), uint64(0), "The oldset offset should be equal 0")
 
 	// Append after collecting all segments
 	helloOffset, _, err := log.Append([]byte("Hello"))
 	assert.Nil(t, err)
 	assert.Equal(t, helloOffset, uint64(0))
-	assert.Equal(t, log.LastOffset(), helloOffset+1, "The last offset should be equal 1")
+	assert.Equal(t, log.NewsetOffset(), helloOffset+1, "The last offset should be equal 1")
 	assert.Equal(t, log.OldestOffset(), uint64(0), "The oldset offset should be equal 0")
 }
 
