@@ -19,22 +19,21 @@ import (
 	"github.com/ayoyu/comLog/comLog"
 )
 
-type Config struct {
-	LogCfg comLog.Config
-
-	Lg *zap.Logger
-}
-
 type ComLogServer struct {
 	pb.UnimplementedComLogRpcServer
-	Config
+
+	CommLogServerConfig
 
 	log        *comLog.Log
 	shutDownCh chan os.Signal
 }
 
-func NewComLogServer(cfg Config) (*ComLogServer, error) {
-	log, err := comLog.NewLog(cfg.LogCfg)
+func NewComLogServer(cfg CommLogServerConfig) (*ComLogServer, error) {
+	log, err := comLog.NewLog(comLog.Config{
+		Data_dir:      cfg.CommitLog.DataDir,
+		StoreMaxBytes: cfg.CommitLog.StoreMaxBytes,
+		IndexMaxBytes: cfg.CommitLog.IndexMaxBytes,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -53,9 +52,9 @@ func NewComLogServer(cfg Config) (*ComLogServer, error) {
 	}
 
 	s := &ComLogServer{
-		Config:     cfg,
-		log:        log,
-		shutDownCh: shutDownCh,
+		CommLogServerConfig: cfg,
+		log:                 log,
+		shutDownCh:          shutDownCh,
 	}
 	s.Lg.Info("Initializing the commit log server", zap.String("data directory", s.log.Data_dir))
 

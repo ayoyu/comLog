@@ -12,9 +12,29 @@ import (
 	"google.golang.org/grpc/keepalive"
 )
 
-type Option func(*Client) error
+type Client interface {
+	// Close shuts down the commit log client's connections.
+	// It is required to call this function before a client object passes out of scope,
+	// as it will otherwise leak memory.
+	// You must close any Producers or Consumers using a client BEFORE you close the client.
+	Close() error
 
-type Client struct {
+	// Options returns the options struct of the client.
+	Options() *options
+
+	// RpcConnection returns the grpc client connection used to establish the connection with the server.
+	RpcConnection() *grpc.ClientConn
+
+	// RpcCallOptions returns the grpc call option.
+	RpcCallOptions() []grpc.CallOption
+
+	// Logger returns the zap logger
+	Logger() *zap.Logger
+}
+
+type Option func(*client) error
+
+type client struct {
 	*options
 	serverAddr string
 	context    context.Context
@@ -29,9 +49,36 @@ type Client struct {
 	lg *zap.Logger
 }
 
+func (c *client) Close() error {
+	c.lg.Info("Closing the commit log client")
+	c.cancel()
+	if c.conn != nil {
+		// TODO: wrap the grpc error
+		return c.conn.Close()
+	}
+
+	return c.context.Err()
+}
+
+func (c *client) Options() *options {
+	return c.options
+}
+
+func (c *client) RpcConnection() *grpc.ClientConn {
+	return c.conn
+}
+
+func (c *client) RpcCallOptions() []grpc.CallOption {
+	return c.callOpts
+}
+
+func (c *client) Logger() *zap.Logger {
+	return c.lg
+}
+
 // WithLogger overrides the default no-op logger
 func WithLogger(lg *zap.Logger) Option {
-	return func(c *Client) error {
+	return func(c *client) error {
 		c.lg = lg
 		return nil
 	}
@@ -40,7 +87,7 @@ func WithLogger(lg *zap.Logger) Option {
 // WithRetryPolicyOption configures the retry policy option.
 // Ref: https://github.com/grpc/grpc/blob/master/doc/service_config.md
 func WithRetryPolicy(opt RetryOptionParameters) Option {
-	return func(c *Client) error {
+	return func(c *client) error {
 		setDefaultRetryPolicy(&opt)
 
 		m := methodConfig{
@@ -57,16 +104,16 @@ func WithRetryPolicy(opt RetryOptionParameters) Option {
 		if err != nil {
 			return err
 		}
-		c.retry.serviceCfgRawJSON = string(b)
+		c.retryOpt.serviceCfgRawJSON = string(b)
 		return nil
 	}
 }
 
 // TODO
 func WithAuth(username, password string) Option {
-	return func(c *Client) error {
-		c.auth.username = username
-		c.auth.password = password
+	return func(c *client) error {
+		c.authOpt.username = username
+		c.authOpt.password = password
 		return nil
 	}
 }
@@ -75,12 +122,12 @@ func WithAuth(username, password string) Option {
 // to validate the server connection. The serverNameOverride is only for testing, if not empty it will override
 // the virtual host name of authority in requests.
 func WithTLS(rootCAFile, serverNameOverride string) Option {
-	return func(c *Client) error {
+	return func(c *client) error {
 		creds, err := credentials.NewClientTLSFromFile(rootCAFile, serverNameOverride)
 		if err != nil {
 			return err
 		}
-		c.tls.creds = creds
+		c.tlsOpt.creds = creds
 		return nil
 	}
 }
@@ -88,8 +135,8 @@ func WithTLS(rootCAFile, serverNameOverride string) Option {
 // WithDialTimeout configures the timeout for failing to establish a dial connection with the server.
 // This is valid if and only if WithBlock() is present, if dial is non-blocking the timeout will be ignored.
 func WithDialTimeout(timeout time.Duration) Option {
-	return func(c *Client) error {
-		c.dial.dialTimeout = timeout
+	return func(c *client) error {
+		c.dialOpt.dialTimeout = timeout
 		return nil
 	}
 }
@@ -101,8 +148,8 @@ func WithDialTimeout(timeout time.Duration) Option {
 // Use of this feature is not recommended. For more information, please see:
 // https://github.com/grpc/grpc-go/blob/master/Documentation/anti-patterns.md
 func WithDialBlock() Option {
-	return func(c *Client) error {
-		c.dial.dialBlock = true
+	return func(c *client) error {
+		c.dialOpt.dialBlock = true
 		return nil
 	}
 }
@@ -113,22 +160,25 @@ func WithDialBlock() Option {
 // in this time, the connection is closed. When `permitWithoutStream` is set to true the client will send keepalive pings
 // to the server without any active streams(RPCs).
 func WithKeepAliveProbe(dialTime, dialTimeout time.Duration, permitWithoutStream bool) Option {
-	return func(c *Client) error {
-		c.alive.dialKeepAliveTime = dialTime
-		c.alive.dialKeepAliveTimeout = dialTimeout
-		c.alive.permitWithoutStream = permitWithoutStream
+	return func(c *client) error {
+		c.aliveOpt.dialKeepAliveTime = dialTime
+		c.aliveOpt.dialKeepAliveTimeout = dialTimeout
+		c.aliveOpt.permitWithoutStream = permitWithoutStream
 		return nil
 	}
 }
 
-// WithMaxCallSendRecvMsgSize configures the client-side request/response send/receive limit sizein bytes.
+// WithMaxCallSendRecvMsgSize configures the client-side request/response send/receive limit size in bytes.
 // The default values for `sendBytes` and `recvBytes` if they are not set are 2 MB (= 2 * 1024 * 1024) and
 // `math.MaxInt32` respectively.
 // Make sure that "client-side send limit < server-side default send/recv limit" and
 // "client-side receive limit >= server-side default send/recv limit" because range response
 // can easily exceed request send limits
+//
+// TODO: Since recently we seperated the client API into a producer/consumer API. We must also seperate this
+// option btw the two. (The producer only sends and the consumer only receives). See sarama.config.Fetch
 func WithMaxSendRecvMsgSize(sendBytes, recvBytes int) Option {
-	return func(c *Client) error {
+	return func(c *client) error {
 		if recvBytes > 0 {
 			if sendBytes == 0 && recvBytes < defaultmaxSendMsgSize {
 				return fmt.Errorf(
@@ -144,8 +194,8 @@ func WithMaxSendRecvMsgSize(sendBytes, recvBytes int) Option {
 				)
 			}
 		}
-		c.call.maxCallSendMsgSize = sendBytes
-		c.call.maxCallRecvMsgSize = recvBytes
+		c.callOpt.maxCallSendMsgSize = sendBytes
+		c.callOpt.maxCallRecvMsgSize = recvBytes
 		return nil
 	}
 }
@@ -162,8 +212,8 @@ func WithMaxSendRecvMsgSize(sendBytes, recvBytes int) Option {
 // this size, we will "linger" `WithLinger` while waiting for other records to appear and when the time comes,
 // we will send the batch to the server even if there is still room for other records.
 func WithAsyncProducerBatchSize(size int) Option {
-	return func(c *Client) error {
-		c.batch.batchSize = size
+	return func(c *client) error {
+		c.asyncProducerOpts.batch.batchSize = size
 		return nil
 	}
 }
@@ -175,8 +225,8 @@ func WithAsyncProducerBatchSize(size int) Option {
 // This time represents the upper limit of waiting which means if the buffer is already full of records
 // the batch will be sent immediately regardless of this option. The default is 0.
 func WithAsyncProducerLinger(linger time.Duration) Option {
-	return func(c *Client) error {
-		c.batch.linger = linger
+	return func(c *client) error {
+		c.asyncProducerOpts.batch.linger = linger
 		return nil
 	}
 }
@@ -185,100 +235,124 @@ func WithAsyncProducerLinger(linger time.Duration) Option {
 // to be delivered.
 // If set to true, you MUST read from the respective channel `Errors` to prevent deadlock.
 func WithAsyncProducerReturnErrors(enabled bool) Option {
-	return func(c *Client) error {
-		c.pReturnErr.enabled = enabled
+	return func(c *client) error {
+		c.asyncProducerOpts.returnErrors.enabled = enabled
 		return nil
 	}
 }
 
-func (c *Client) addDialOpts() {
-	if c.retry.serviceCfgRawJSON != "" {
-		c.dialOpts = append(c.dialOpts, grpc.WithDefaultServiceConfig(c.retry.serviceCfgRawJSON))
+// WithConsumerOffsetsAutoCommit enables The Automatic Offset Committing, i.e. whether or not to auto-commit updated
+// offsets. `Interval` indicates how frequently to commit updated offsets. Ineffective unless auto-commit is enabled
+// (default 1s)
+func WithConsumerOffsetsAutoCommit(enabled bool, interval time.Duration) Option {
+	return func(c *client) error {
+		c.consumerOpts.offsetsAutoCommit.enabled = enabled
+		c.consumerOpts.offsetsAutoCommit.interval = interval
+		return nil
+	}
+}
+
+// WithAutoOffsetResetProperty controlls the behavior when we `Seek` manually into an invalid offset, i.e. smaller than
+// the log start or larger than the log end offsets.
+// If this is set to `OldestOffset`, the next poll will return records from the starting offset.
+// If it is set to `NewestOffset`, it will seek to the last offset.
+func WithConsumerAutoOffsetResetProperty(resetOffset ResetOffset) Option {
+	return func(c *client) error {
+		if resetOffset > NewestOffset {
+			return fmt.Errorf("invalid resetOffset argument, it must be `OldestOffset` or `NewestOffset`")
+		}
+		c.consumerOpts.autoOffsetResetProperty.initial = resetOffset
+		return nil
+	}
+}
+
+func (c *client) addDialOpts() {
+	if c.retryOpt.serviceCfgRawJSON != "" {
+		c.dialOpts = append(c.dialOpts, grpc.WithDefaultServiceConfig(c.retryOpt.serviceCfgRawJSON))
 	} else {
 		c.dialOpts = append(c.dialOpts, defaultServiceConfig)
 	}
 
-	if c.tls.creds != nil {
-		c.dialOpts = append(c.dialOpts, grpc.WithTransportCredentials(c.tls.creds))
+	if c.tlsOpt.creds != nil {
+		c.dialOpts = append(c.dialOpts, grpc.WithTransportCredentials(c.tlsOpt.creds))
 	} else {
 		c.dialOpts = append(c.dialOpts, defaultTLSInsecureCreds)
 	}
 
-	if c.alive.dialKeepAliveTime > 0 {
+	if c.aliveOpt.dialKeepAliveTime > 0 {
 		// TODO: define default probe values ?
 		params := keepalive.ClientParameters{
-			Time:                c.alive.dialKeepAliveTime,
-			Timeout:             c.alive.dialKeepAliveTimeout,
-			PermitWithoutStream: c.alive.permitWithoutStream,
+			Time:                c.aliveOpt.dialKeepAliveTime,
+			Timeout:             c.aliveOpt.dialKeepAliveTimeout,
+			PermitWithoutStream: c.aliveOpt.permitWithoutStream,
 		}
 		c.dialOpts = append(c.dialOpts, grpc.WithKeepaliveParams(params))
 	}
 
-	if c.dial.dialBlock {
+	if c.dialOpt.dialBlock {
 		c.dialOpts = append(c.dialOpts, grpc.WithBlock())
 	}
 }
 
-func (c *Client) addCallOpts() {
+func (c *client) addCallOpts() {
 	c.callOpts = append(c.callOpts, defaultWaitForReady)
 
-	if c.call.maxCallSendMsgSize > 0 {
-		c.callOpts = append(c.callOpts, grpc.MaxCallSendMsgSize(c.call.maxCallSendMsgSize))
+	if c.callOpt.maxCallSendMsgSize > 0 {
+		c.callOpts = append(c.callOpts, grpc.MaxCallSendMsgSize(c.callOpt.maxCallSendMsgSize))
 	} else {
 		c.callOpts = append(c.callOpts, defaultMaxCallSendMsgSize)
 	}
 
-	if c.call.maxCallRecvMsgSize > 0 {
-		c.callOpts = append(c.callOpts, grpc.MaxCallRecvMsgSize(c.call.maxCallRecvMsgSize))
+	if c.callOpt.maxCallRecvMsgSize > 0 {
+		c.callOpts = append(c.callOpts, grpc.MaxCallRecvMsgSize(c.callOpt.maxCallRecvMsgSize))
 	} else {
 		c.callOpts = append(c.callOpts, defaultMaxCallRecvMsgSize)
 	}
 }
 
-func (c *Client) Dial() (*grpc.ClientConn, error) {
+func (c *client) dial() (*grpc.ClientConn, error) {
 	dctx := c.context
-	if c.dial.dialTimeout > 0 {
+	if c.dialOpt.dialTimeout > 0 {
 		var cancel context.CancelFunc
-		dctx, cancel = context.WithTimeout(c.context, c.dial.dialTimeout)
+		dctx, cancel = context.WithTimeout(c.context, c.dialOpt.dialTimeout)
 		defer cancel()
 	}
 
 	return grpc.DialContext(dctx, c.serverAddr, c.dialOpts...)
 }
 
-// Close shuts down the commit log client's connections.
-// It is required to call this function before a client object passes out of scope,
-// as it will otherwise leak memory.
-// You must close any Producers or Consumers using a client BEFORE you close the client.
-func (c *Client) Close() error {
-	c.lg.Info("Closing the commit log client")
-	c.cancel()
-	if c.conn != nil {
-		// TODO: wrap the grpc error
-		return c.conn.Close()
-	}
-
-	return c.context.Err()
-}
-
 // Creates new commit log gRPC client with the given server address and options.
 // The context is the default client context, it can be used to cancel grpc dial
 // out and other operations that do not have an explicit context.
-func New(ctx context.Context, serverAddr string, opts ...Option) (*Client, error) {
+func New(ctx context.Context, serverAddr string, opts ...Option) (*client, error) {
 	baseCtx := context.TODO()
 	if ctx != nil {
 		baseCtx = ctx
 	}
 	ctx, cancel := context.WithCancel(baseCtx)
 
-	cli := &Client{
+	cli := &client{
 		serverAddr: serverAddr,
 		context:    ctx,
 		cancel:     cancel,
 		options: &options{
-			batch: batchOption{
-				batchSize: defaultBatchSize,
-				linger:    time.Duration(0),
+			asyncProducerOpts: asyncProducerOptions{
+				batch: struct {
+					batchSize int
+					linger    time.Duration
+				}{
+					batchSize: defaultBatchSize,
+					linger:    time.Duration(0),
+				},
+			},
+			consumerOpts: consumerOptions{
+				offsetsAutoCommit: struct {
+					enabled  bool
+					interval time.Duration
+				}{
+					enabled:  true,
+					interval: 1 * time.Second,
+				},
 			},
 		},
 	}
@@ -296,7 +370,7 @@ func New(ctx context.Context, serverAddr string, opts ...Option) (*Client, error
 	cli.addDialOpts()
 	cli.addCallOpts()
 
-	conn, err := cli.Dial()
+	conn, err := cli.dial()
 	if err != nil {
 		cli.cancel()
 		return nil, err

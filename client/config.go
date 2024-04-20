@@ -180,6 +180,7 @@ type tlsOption struct {
 	creds credentials.TransportCredentials
 }
 
+// TODO: This options must be seperated btw the producer/consumer options.
 type callOption struct {
 	// maxCallSendMsgSize and maxCallRecvMsgSize are used to set the req/resp size limit
 	maxCallSendMsgSize int
@@ -199,26 +200,49 @@ type keepAliveProbeOption struct {
 	dialBlock bool
 }
 
-type batchOption struct {
-	// The upper bound of the batch size to use for buffering records to be sent later.
-	// Default to 16384=16*1024
-	batchSize int
-	// The upper bound of time awaiting for other records to show up to fill the buffer in order
-	// to batch the maximum possible
-	linger time.Duration
+type asyncProducerOptions struct {
+	batch struct {
+		// The upper bound of the batch size to use for buffering records to be sent later.
+		// Default to 16384=16*1024
+		batchSize int
+		// The upper bound of time awaiting for other records to show up to fill the buffer in order
+		// to batch the maximum possible
+		linger time.Duration
+	}
+
+	returnErrors struct {
+		enabled bool
+	}
 }
 
-type producerReturnErrorsOption struct {
-	enabled bool
+type ResetOffset uint
+
+const (
+	OldestOffset ResetOffset = iota
+	NewestOffset
+)
+
+type consumerOptions struct {
+	offsetsAutoCommit struct {
+		enabled  bool
+		interval time.Duration
+	}
+
+	autoOffsetResetProperty struct {
+		// The initial offset to use when reset happen. It should be either
+		// NewestOffset or OldestOffset. Defaults to NewestOffset.
+		initial ResetOffset
+	}
 }
 
 type options struct {
-	retry      retryOption
-	auth       authOption
-	tls        tlsOption
-	call       callOption
-	dial       dialOption
-	alive      keepAliveProbeOption
-	batch      batchOption
-	pReturnErr producerReturnErrorsOption
+	retryOpt retryOption
+	authOpt  authOption
+	tlsOpt   tlsOption
+	callOpt  callOption
+	dialOpt  dialOption
+	aliveOpt keepAliveProbeOption
+
+	asyncProducerOpts asyncProducerOptions
+	consumerOpts      consumerOptions
 }

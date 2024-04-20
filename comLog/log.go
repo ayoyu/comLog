@@ -32,12 +32,14 @@ var (
 type Config struct {
 	// File system directory where the physical store and index files will be stored
 	Data_dir string
-	// (Optional) Number of segments in the existing log data directory to setup from a second run
-	NbrOfSegments int
 	// Max bytes to store in the store-file
 	StoreMaxBytes uint64
 	// Max bytes to store in the index-file
 	IndexMaxBytes uint64
+
+	// DEPRECATED. (Optional) Number of segments in the existing log data directory
+	// to setup from a second run.
+	NbrOfSegments int
 }
 
 // The Log structure that holds the list of used segments and maintains the reference to the active segment

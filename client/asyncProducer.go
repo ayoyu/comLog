@@ -9,6 +9,7 @@ import (
 	pb "github.com/ayoyu/comLog/api"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/status"
 )
 
 type (
@@ -38,7 +39,8 @@ type AsyncProducer interface {
 
 	// Errors is the error output channel back to the user. If `client.WithAsyncProducerReturnErrors` is set to true,
 	// You MUST read from this channel or the Producer will **Deadlock**.
-	// Otherwise if set to false (by default), this will prevents errors to be communicated back to the user.
+	// Otherwise if set to false (by default), this will prevents errors to be communicated back to the user,
+	// and they will be logged instead if the logger option with `client.WithLogger` is defined.
 	Errors() <-chan error
 
 	// Close shuts down the async producer and sends any remaining buffered records from the record accumulator
@@ -47,29 +49,31 @@ type AsyncProducer interface {
 	Close() error
 }
 
-type callbacks struct {
+type onCompletioncallbacks struct {
 	mu    sync.RWMutex
 	store map[int]OnCompletionSendCallback
 }
 
-func newCallbacks(size int) *callbacks {
-	return &callbacks{store: make(map[int]OnCompletionSendCallback, size)}
+func newOnCompletioncallbacks() *onCompletioncallbacks {
+	return &onCompletioncallbacks{
+		store: make(map[int]OnCompletionSendCallback),
+	}
 }
 
-func (c *callbacks) put(key int, val OnCompletionSendCallback) {
+func (c *onCompletioncallbacks) put(key int, val OnCompletionSendCallback) {
 	c.mu.Lock()
 	c.store[key] = val
 	c.mu.Unlock()
 }
 
-func (c *callbacks) get(key int) (OnCompletionSendCallback, bool) {
+func (c *onCompletioncallbacks) get(key int) (OnCompletionSendCallback, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	val, ok := c.store[key]
 	return val, ok
 }
 
-func (c *callbacks) setStore(newStore map[int]OnCompletionSendCallback) {
+func (c *onCompletioncallbacks) setStoreFrom(newStore map[int]OnCompletionSendCallback) {
 	c.mu.Lock()
 	for k, v := range newStore {
 		c.store[k] = v
@@ -80,38 +84,37 @@ func (c *callbacks) setStore(newStore map[int]OnCompletionSendCallback) {
 type asyncProducer struct {
 	remote   pb.ComLogRpcClient
 	callOpts []grpc.CallOption
-	batchOpt batchOption
+	opts     asyncProducerOptions
 
 	accumulator *recordAccumulator
 
-	prevcallbacks *callbacks
-	currcallbacks *callbacks
+	prevcallbacks *onCompletioncallbacks
+	currcallbacks *onCompletioncallbacks
 
 	wait *sync.WaitGroup
 
 	closeCh         chan chan error
 	streamRecvErrCh chan error
 
-	enableReturnProducerErr bool
-	producerErr             chan error
+	producerErr chan error
 
 	lg *zap.Logger
 }
 
-func NewAsyncProducer(c *Client) AsyncProducer {
+func NewAsyncProducer(c Client) AsyncProducer {
+	opts := c.Options()
 	p := &asyncProducer{
-		remote:                  pb.NewComLogRpcClient(c.conn),
-		callOpts:                c.callOpts,
-		batchOpt:                c.batch,
-		accumulator:             newRecordAccumulator(c.batch.batchSize),
-		prevcallbacks:           newCallbacks(c.batch.batchSize),
-		currcallbacks:           newCallbacks(c.batch.batchSize),
-		wait:                    new(sync.WaitGroup),
-		closeCh:                 make(chan chan error),
-		streamRecvErrCh:         make(chan error, 1),
-		enableReturnProducerErr: c.pReturnErr.enabled,
-		producerErr:             make(chan error),
-		lg:                      c.lg,
+		remote:          pb.NewComLogRpcClient(c.RpcConnection()),
+		callOpts:        c.RpcCallOptions(),
+		opts:            opts.asyncProducerOpts,
+		accumulator:     newRecordAccumulator(opts.asyncProducerOpts.batch.batchSize),
+		prevcallbacks:   newOnCompletioncallbacks(),
+		currcallbacks:   newOnCompletioncallbacks(),
+		wait:            new(sync.WaitGroup),
+		closeCh:         make(chan chan error),
+		streamRecvErrCh: make(chan error, 1),
+		producerErr:     make(chan error),
+		lg:              c.Logger(),
 	}
 
 	go p.sendLoop()
@@ -139,14 +142,21 @@ func (p *asyncProducer) sendBatch() error {
 
 	stream, err := p.remote.StreamBatchAppend(context.TODO(), &batch, p.callOpts...)
 	if err != nil {
-		p.lg.Error("Failed to send the stream batch records", zap.Error(err))
 		return err
 	}
 	// Once we set the prevcallbacks, the current callbacks can be overwritten when we
 	// send the doneSending signal to the accumulator. In this case the accumulator can continue
 	// adding next record without blocking to wait for the whole stream receive operation
 	// that is happening in parallel.
-	p.prevcallbacks.setStore(p.currcallbacks.store)
+	//
+	// Note: The keys in prevcallbacks and currcallbacks will be **almost** the same on every send operation,
+	// specially if we are always sending the same amount of records of the same type.
+	// Because the keys are the offsets inside`recordAccumulator.indexes`, and `recordAccumulator.resetNextOffsetAndIndex`
+	// will reset on every iteration those offsets. For this reason we will not have the case where the store map grows
+	// and then for the nexts send operations, the available rooms are not used anymore, specially when we know that
+	// the map in go can only grow (more buckets) and it never shrinks even we use `delete`.
+	// see https://github.com/golang/go/issues/20135
+	p.prevcallbacks.setStoreFrom(p.currcallbacks.store)
 
 	p.wait.Add(1)
 	go func() {
@@ -180,20 +190,23 @@ func (p *asyncProducer) sendBatch() error {
 }
 
 func (p *asyncProducer) sendLoop() {
-	lingerTimer := time.NewTimer(p.batchOpt.linger)
+	lingerTimer := time.NewTimer(p.opts.batch.linger)
 	defer lingerTimer.Stop()
 
 	for {
 		select {
 		case err := <-p.streamRecvErrCh:
-			if p.enableReturnProducerErr {
+			if p.opts.returnErrors.enabled {
 				p.producerErr <- err
+			} else {
+				p.lg.Error(status.Convert(err).Message())
 			}
 
 		case closeErrCh := <-p.closeCh:
 			p.lg.Info("Closing the async producer. Sending the remaining records from the accumulator "+
 				"and waiting for all the current operations to finish...",
 				zap.Int64("remaining records number", p.accumulator.recordsSize()))
+
 			finalErr := p.sendBatch()
 			// We don't really need to reset the accumulator next-positions as we are closing.
 			p.wait.Wait()
@@ -204,21 +217,31 @@ func (p *asyncProducer) sendLoop() {
 
 		case <-p.accumulator.startSending():
 			p.lg.Info("Accumulator record buffer is full. Start sending the batch records...")
-			if err := p.sendBatch(); p.enableReturnProducerErr && err != nil {
-				p.producerErr <- err
+
+			if err := p.sendBatch(); err != nil {
+				if p.opts.returnErrors.enabled {
+					p.producerErr <- err
+				} else {
+					p.lg.Error(status.Convert(err).Message())
+				}
 			}
 
 			p.accumulator.doneSending() <- struct{}{}
 
 		case <-lingerTimer.C:
 			p.lg.Info("Wait linger time is triggered. Start sending the batch records...",
-				zap.Duration("Wait linger time", p.batchOpt.linger))
-			if err := p.sendBatch(); p.enableReturnProducerErr && err != nil {
-				p.producerErr <- err
+				zap.Duration("Wait linger time", p.opts.batch.linger))
+
+			if err := p.sendBatch(); err != nil {
+				if p.opts.returnErrors.enabled {
+					p.producerErr <- err
+				} else {
+					p.lg.Error(status.Convert(err).Message())
+				}
 			}
 
 			p.accumulator.resetNextOffsetAndIndex()
-			lingerTimer.Reset(p.batchOpt.linger)
+			lingerTimer.Reset(p.opts.batch.linger)
 		}
 	}
 }

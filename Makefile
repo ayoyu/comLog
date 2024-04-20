@@ -32,11 +32,11 @@ default_server:
 		mkdir ${DEV_LOG_DATA_DIR}; \
 	fi
 
-	go run -race server/cmd/main.go --log-data-dir ${DEV_LOG_DATA_DIR}
+	@go run -race server/cmd/main.go --log-data-dir ${DEV_LOG_DATA_DIR}
 
 
 server_help:
-	go run server/cmd/main.go --help
+	@go run server/cmd/main.go --help
 
 
 run_benchmarks:

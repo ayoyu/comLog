@@ -7,7 +7,6 @@ import (
 	"os"
 
 	pb "github.com/ayoyu/comLog/api"
-	"github.com/ayoyu/comLog/comLog"
 	"github.com/ayoyu/comLog/server"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -36,7 +35,7 @@ var (
 	LOG_DATA_DIR            = flag.String("log-data-dir", "", "The log data file system directory")
 	OPT_LOG_STORE_MAX_BYTES = flag.Uint64("log-store-max-bytes", server.DefaultCommitLogStoreMaxBytes, "(Optional) The log store max bytes")
 	OPT_LOG_INDEX_MAX_BYTES = flag.Uint64("log-index-max-bytes", server.DefaultCommitLogIndexMaxBytes, "(Optional) The log index max bytes")
-	OPT_LOG_NBR_SEGMENTS    = flag.Int("log-segments-number", 0, "(Optional) The number of segments from an existing log data file system directory.")
+	OPT_LOG_NBR_SEGMENTS    = flag.Int("log-segments-number", 0, "DEPRECATED. (Optional) The number of segments from an existing log data file system directory.")
 
 	OPT_PORT = flag.Int("port", 50052, "(Optional) The server port.")
 )
@@ -47,15 +46,15 @@ func newGrpcServer() (*grpc.Server, error) {
 
 	if *OPT_TLS {
 		if *OPT_CERT_FILE == "" || *OPT_KEY_FILE == "" {
-			// logrus.Warnf("The cert_file or key_file flags are empty while the tls boolean flag is true. " +
-			// 	"The server in this case will start without any TLS configuration.")
-		} else {
-			cred, err := credentials.NewServerTLSFromFile(*OPT_CERT_FILE, *OPT_KEY_FILE)
-			if err != nil {
-				return nil, err
-			}
-			opts = append(opts, grpc.Creds(cred))
+			return nil, fmt.Errorf("the `cert-file` or `key-file` flags are empty while the tls boolean flag is set to true")
 		}
+
+		cred, err := credentials.NewServerTLSFromFile(*OPT_CERT_FILE, *OPT_KEY_FILE)
+		if err != nil {
+			return nil, err
+		}
+
+		opts = append(opts, grpc.Creds(cred))
 	}
 
 	opts = append(opts,
@@ -96,10 +95,14 @@ func main() {
 		lg.Fatal("Failed to create the gRPC server", zap.Error(err))
 	}
 	comlogServer, err := server.NewComLogServer(
-		server.Config{
-			LogCfg: comLog.Config{
-				Data_dir:      *LOG_DATA_DIR,
-				NbrOfSegments: *OPT_LOG_NBR_SEGMENTS,
+		server.CommLogServerConfig{
+			CommitLog: struct {
+				DataDir       string
+				StoreMaxBytes uint64
+				IndexMaxBytes uint64
+				NbrOfSegments int
+			}{
+				DataDir:       *LOG_DATA_DIR,
 				StoreMaxBytes: *OPT_LOG_STORE_MAX_BYTES,
 				IndexMaxBytes: *OPT_LOG_INDEX_MAX_BYTES,
 			},
