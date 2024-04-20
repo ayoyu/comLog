@@ -46,15 +46,15 @@ func newGrpcServer() (*grpc.Server, error) {
 
 	if *OPT_TLS {
 		if *OPT_CERT_FILE == "" || *OPT_KEY_FILE == "" {
-			// logrus.Warnf("The cert_file or key_file flags are empty while the tls boolean flag is true. " +
-			// 	"The server in this case will start without any TLS configuration.")
-		} else {
-			cred, err := credentials.NewServerTLSFromFile(*OPT_CERT_FILE, *OPT_KEY_FILE)
-			if err != nil {
-				return nil, err
-			}
-			opts = append(opts, grpc.Creds(cred))
+			return nil, fmt.Errorf("the `cert-file` or `key-file` flags are empty while the tls boolean flag is set to true")
 		}
+
+		cred, err := credentials.NewServerTLSFromFile(*OPT_CERT_FILE, *OPT_KEY_FILE)
+		if err != nil {
+			return nil, err
+		}
+
+		opts = append(opts, grpc.Creds(cred))
 	}
 
 	opts = append(opts,
