@@ -56,6 +56,8 @@ func main() {
 		client.WithAsyncProducerLinger(1*time.Second),
 		client.WithAsyncProducerBatchSize(40),
 		client.WithLogger(lg),
+		// If returnErrors set to fasle (by default), the errors will be logged instead
+		// if any logger was defined.
 		client.WithAsyncProducerReturnErrors(true),
 	)
 	if err != nil {
@@ -106,7 +108,8 @@ func main() {
 
 	done := make(chan struct{})
 	defer close(done)
-	// The goroutine responsible for getting the errors during the records production stream.
+	// The goroutine responsible for getting the errors during
+	// the records production stream.
 	go func() {
 		for {
 			select {
@@ -136,10 +139,3 @@ func main() {
 
 }
 ```
-
-## Tasks:
-
-- [x] Write the commit log library (package)
-- [x] Write the rpc service to expose the library
-- [ ] Write the service discovery logic for the distribution purpose
-- [ ] Write the service coordination/consensus logic
