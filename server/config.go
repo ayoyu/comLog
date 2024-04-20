@@ -3,6 +3,8 @@ package server
 import (
 	"math"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 const (
@@ -20,3 +22,17 @@ const (
 	// 4 MB in store corresponds to 256 KB in index
 	DefaultCommitLogIndexMaxBytes = DefaultCommitLogStoreMaxBytes / 16
 )
+
+type CommLogServerConfig struct {
+	CommitLog struct {
+		DataDir       string
+		StoreMaxBytes uint64
+		IndexMaxBytes uint64
+
+		// DEPRECATED. (Optional) Number of segments in the existing log data directory
+		// to setup from a second run
+		NbrOfSegments int
+	}
+
+	Lg *zap.Logger
+}
