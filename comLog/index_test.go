@@ -84,7 +84,7 @@ func TestIndexAppendEOF(t *testing.T) {
 	assert.ErrorIs(t, err, io.EOF)
 	assert.Equal(
 		t, err.Error(),
-		"[index]: Failed to append (offset,position) tuple, no more space EOF. Err: EOF",
+		"[index]: no more space to append the (offset,position) tuple: EOF",
 	)
 	// remove the temp test data
 	removeTempFile(index.file.Name())

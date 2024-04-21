@@ -34,7 +34,7 @@ func newIndex(file *os.File, maxBytes uint64) (*index, error) {
 
 	fileInfo, err = os.Stat(file.Name())
 	if err != nil {
-		return nil, fmt.Errorf(indexContext+"Failed to get file stat for file %s. Err: %w", file.Name(), err)
+		return nil, fmt.Errorf(indexContext+"failed to get file stat for file %s: %w", file.Name(), err)
 	}
 
 	// Real size before growing the file index
@@ -42,12 +42,12 @@ func newIndex(file *os.File, maxBytes uint64) (*index, error) {
 	// Grow the size of the file to get the mmap-buf with the maxBytes size
 	err = os.Truncate(file.Name(), int64(maxBytes))
 	if err != nil {
-		return nil, fmt.Errorf(indexContext+"Failed to truncate the index file %s to grow its size to maxBytes. Err: %w", file.Name(), err)
+		return nil, fmt.Errorf(indexContext+"failed to truncate the index file %s to grow its size to maxBytes: %w", file.Name(), err)
 	}
 
 	mmap, err = gommap.Map(file.Fd(), gommap.PROT_READ|gommap.PROT_WRITE, gommap.MAP_SHARED)
 	if err != nil {
-		return nil, fmt.Errorf(indexContext+"Failed to get mmap for the index file %s. Err: %w", file.Name(), err)
+		return nil, fmt.Errorf(indexContext+"failed to get mmap for the index file %s: %w", file.Name(), err)
 	}
 
 	return &index{
@@ -62,7 +62,7 @@ func (idx *index) append(offset, position uint64) error {
 	currPos := idx.size
 
 	if idx.maxBytes-currPos < indexEntryWidth {
-		return fmt.Errorf(indexContext+"Failed to append (offset,position) tuple, no more space EOF. Err: %w", io.EOF)
+		return fmt.Errorf(indexContext+"no more space to append the (offset,position) tuple: %w", io.EOF)
 	}
 
 	encoding.PutUint64(idx.mmap[currPos:currPos+offsetWidth], offset)
@@ -98,15 +98,15 @@ func (idx *index) nbrOfIndexEntries() uint64 {
 
 func (idx *index) close() error {
 	if err := idx.mmap.Sync(gommap.MS_SYNC); err != nil {
-		return fmt.Errorf(indexContext+"Faild to Sync/Flush back to device the mmap index file %s. Err: %w", idx.name(), err)
+		return fmt.Errorf(indexContext+"faild to Sync/Flush back to device the mmap index file %s: %w", idx.name(), err)
 	}
 
 	if err := idx.file.Sync(); err != nil {
-		return fmt.Errorf(indexContext+"Failed to flush the index file %s to stable storage. Err: %w", idx.name(), err)
+		return fmt.Errorf(indexContext+"failed to flush the index file %s to stable storage: %w", idx.name(), err)
 	}
 
 	if err := idx.file.Truncate(int64(idx.size)); err != nil {
-		return fmt.Errorf(indexContext+"Failed to truncate the index file %s to the last tracked size %d. Err: %w", idx.name(), idx.size, err)
+		return fmt.Errorf(indexContext+"failed to truncate the index file %s to the last tracked size %d: %w", idx.name(), idx.size, err)
 	}
 
 	return idx.file.Close()

@@ -85,7 +85,7 @@ func (log *Log) setup() error {
 
 	entries, err = os.ReadDir(log.Data_dir)
 	if err != nil {
-		return fmt.Errorf("%w. Original Err: %w", ErrSetup, err)
+		return fmt.Errorf("%w. %w", ErrSetup, err)
 	}
 
 	var (
@@ -98,7 +98,7 @@ func (log *Log) setup() error {
 	for _, entry := range entries {
 		fileInfo, err = entry.Info()
 		if err != nil {
-			return fmt.Errorf("%w. Original Err: %w", ErrSetup, err)
+			return fmt.Errorf("%w. %w", ErrSetup, err)
 		}
 		// will take baseOffset info only from storeFile
 		// the existance of the indexFile that goes with the specific storeFile
@@ -107,7 +107,7 @@ func (log *Log) setup() error {
 			baseOffsetStr = strings.TrimSuffix(fileInfo.Name(), storeFileSuffix)
 			baseOffset, err = strconv.Atoi(baseOffsetStr)
 			if err != nil {
-				return fmt.Errorf("%w. Original Err: %w", ErrSetup, err)
+				return fmt.Errorf("%w. %w", ErrSetup, err)
 			}
 
 			baseOffsets = append(baseOffsets, uint64(baseOffset))
@@ -127,7 +127,7 @@ func (log *Log) setup() error {
 		for _, base := range baseOffsets {
 			seg, err = NewSegment(log.Data_dir, log.StoreMaxBytes, log.IndexMaxBytes, base)
 			if err != nil {
-				return fmt.Errorf("%w. Original Err: %w", ErrSetup, err)
+				return fmt.Errorf("%w. %w", ErrSetup, err)
 			}
 
 			log.segments = append(log.segments, seg)
@@ -137,7 +137,7 @@ func (log *Log) setup() error {
 		// first segment with InitOffset=0
 		seg, err = NewSegment(log.Data_dir, log.StoreMaxBytes, log.IndexMaxBytes, 0)
 		if err != nil {
-			return fmt.Errorf("%w. Original Err: %w", ErrSetup, err)
+			return fmt.Errorf("%w. %w", ErrSetup, err)
 		}
 		log.segments = append(log.segments, seg)
 	}
@@ -428,10 +428,10 @@ func (log *Log) CollectSegments(offset uint64) error {
 	}
 
 	if err := grp.Wait(); err != nil {
-		return fmt.Errorf("the collect segments operation failed. "+
+		return fmt.Errorf("collect segments operation failed. "+
 			"The log may contain segements pointing to files that no longer exist in the log data directory. "+
 			"To recover from this failure, the log must be setup again from the current log data directory: %s. "+
-			"Original error: %w", log.Data_dir, err)
+			"%w", log.Data_dir, err)
 	}
 
 	log.segments = newSegments
