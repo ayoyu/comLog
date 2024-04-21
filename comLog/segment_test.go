@@ -21,12 +21,12 @@ func TestNewSegment_EmptyIndexFile(t *testing.T) {
 	var baseOffset uint64 = 0
 	segment, err := NewSegment(dirpath, DefaultMaxBytesStore, DefaultMaxBytesIndex, baseOffset)
 	assert.Nil(t, err)
-	assert.IsType(t, &store{}, segment.storeFile)
-	assert.IsType(t, &index{}, segment.indexFile)
+	assert.IsType(t, &store{}, segment.store)
+	assert.IsType(t, &index{}, segment.index)
 	assert.Equal(t, baseOffset, segment.baseOffset)
 	assert.Equal(t, baseOffset, segment.nextOffset)
 	assert.Equal(t, dirpath, segment.path)
-	t.Logf("dir: %s, storefile: %s, indexfile: %s", dirpath, segment.storeFile.name(), segment.indexFile.name())
+	t.Logf("dir: %s, storefile: %s, indexfile: %s", dirpath, segment.store.name(), segment.index.name())
 }
 
 func TestNewSegment_NotEmptyIndexFile(t *testing.T) {
@@ -39,14 +39,14 @@ func TestNewSegment_NotEmptyIndexFile(t *testing.T) {
 	tempfile, err := os.OpenFile(tempfilepath, os.O_CREATE, 0666)
 	assert.Nil(t, err)
 	// simulate some writes of 2 entries -> 2 * 16 byte
-	var size int64 = 2 * indexWidth
+	var size int64 = 2 * indexEntryWidth
 	err = os.Truncate(tempfile.Name(), size)
 	assert.Nil(t, err)
 
 	segment, err := NewSegment(dirpath, DefaultMaxBytesStore, DefaultMaxBytesIndex, baseOffset)
 	assert.Nil(t, err)
 	assert.Equal(t, segment.nextOffset, baseOffset+2)
-	assert.Equal(t, int(segment.indexFile.nbrOfIndexes()), 2)
+	assert.Equal(t, int(segment.index.nbrOfIndexEntries()), 2)
 	removeTempDir(dirpath)
 }
 
@@ -109,7 +109,7 @@ func TestSegmentBasicAppend(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Equal(t, offset, case_s.offset)
 		assert.Equal(t, seg.nextOffset, case_s.offset+1)
-		assert.Equal(t, nn, len(case_s.record)+lenghtOfRecordSize)
+		assert.Equal(t, nn, len(case_s.record)+recordLenWidthPrefix)
 	}
 
 }

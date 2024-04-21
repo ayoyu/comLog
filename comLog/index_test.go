@@ -67,7 +67,7 @@ func TestIndexAppend(t *testing.T) {
 		err = index.append(case_s.offset, case_s.position)
 		t.Logf("append offset, pos: %d, %d", case_s.offset, case_s.position)
 		assert.Nil(t, err)
-		curr_buffered_byte_index += indexWidth
+		curr_buffered_byte_index += indexEntryWidth
 		assert.Equal(t, index.size, curr_buffered_byte_index)
 		curr_buf_size := trackMmapBuffer(index.mmap)
 		assert.Equal(t, curr_buf_size, curr_buffered_byte_index)
@@ -84,7 +84,7 @@ func TestIndexAppendEOF(t *testing.T) {
 	assert.ErrorIs(t, err, io.EOF)
 	assert.Equal(
 		t, err.Error(),
-		"[index]: Failed to append (offset, position), no more space EOF. Err: EOF",
+		"[index]: no more space to append the (offset,position) tuple: EOF",
 	)
 	// remove the temp test data
 	removeTempFile(index.file.Name())
@@ -130,7 +130,7 @@ func TestIndexNbrOfIndexes(t *testing.T) {
 	for _, case_s := range testcases {
 		index.append(case_s.offset, case_s.position)
 		count++
-		assert.Equal(t, index.nbrOfIndexes(), count)
+		assert.Equal(t, index.nbrOfIndexEntries(), count)
 	}
 	// remove the temp test data
 	removeTempFile(index.file.Name())

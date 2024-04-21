@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strconv"
@@ -84,7 +85,7 @@ func (log *Log) setup() error {
 
 	entries, err = os.ReadDir(log.Data_dir)
 	if err != nil {
-		return fmt.Errorf("%w. Original Err: %w", ErrSetup, err)
+		return fmt.Errorf("%w. %w", ErrSetup, err)
 	}
 
 	var (
@@ -97,7 +98,7 @@ func (log *Log) setup() error {
 	for _, entry := range entries {
 		fileInfo, err = entry.Info()
 		if err != nil {
-			return fmt.Errorf("%w. Original Err: %w", ErrSetup, err)
+			return fmt.Errorf("%w. %w", ErrSetup, err)
 		}
 		// will take baseOffset info only from storeFile
 		// the existance of the indexFile that goes with the specific storeFile
@@ -106,7 +107,7 @@ func (log *Log) setup() error {
 			baseOffsetStr = strings.TrimSuffix(fileInfo.Name(), storeFileSuffix)
 			baseOffset, err = strconv.Atoi(baseOffsetStr)
 			if err != nil {
-				return fmt.Errorf("%w. Original Err: %w", ErrSetup, err)
+				return fmt.Errorf("%w. %w", ErrSetup, err)
 			}
 
 			baseOffsets = append(baseOffsets, uint64(baseOffset))
@@ -126,7 +127,7 @@ func (log *Log) setup() error {
 		for _, base := range baseOffsets {
 			seg, err = NewSegment(log.Data_dir, log.StoreMaxBytes, log.IndexMaxBytes, base)
 			if err != nil {
-				return fmt.Errorf("%w. Original Err: %w", ErrSetup, err)
+				return fmt.Errorf("%w. %w", ErrSetup, err)
 			}
 
 			log.segments = append(log.segments, seg)
@@ -136,7 +137,7 @@ func (log *Log) setup() error {
 		// first segment with InitOffset=0
 		seg, err = NewSegment(log.Data_dir, log.StoreMaxBytes, log.IndexMaxBytes, 0)
 		if err != nil {
-			return fmt.Errorf("%w. Original Err: %w", ErrSetup, err)
+			return fmt.Errorf("%w. %w", ErrSetup, err)
 		}
 		log.segments = append(log.segments, seg)
 	}
@@ -210,15 +211,16 @@ func (log *Log) Append(record []byte) (offset uint64, nn int, err error) {
 	return offset, nn, nil
 }
 
-// Search for the corresponding segment given the offset
-func (log *Log) segmentSearch(offset int64) *Segment {
+// segmentSearch searches for the corresponding segment where the record with the given offset lives.
+// It returns the founded segment if there is any or “nil” otherwise, and its index in the slice “log.segments”.
+func (log *Log) segmentSearch(offset int64) (*Segment, int) {
 	log.mu.RLock()
 	defer log.mu.RUnlock()
 
-	currSize := len(log.segments) - 1
+	currSegmentsSize := len(log.segments) - 1
 	if offset == -1 {
-		// offset=-1 means last entry record that will be located in the last segment (aka active segment)
-		return log.segments[currSize]
+		// The last entry record that will be located in the last segment (aka active segment)
+		return log.segments[currSegmentsSize], currSegmentsSize
 	}
 
 	uOffset := uint64(offset)
@@ -228,10 +230,11 @@ func (log *Log) segmentSearch(offset int64) *Segment {
 
 	for left <= right {
 		mid = left + ((right - left) >> 1)
-		// check if the mid is pointing to the activeSeg or not. if not we can read without worying
+
+		// Checks if the mid is pointing to the activeSeg or not. if not we can read without worying
 		// about locking. The Lock implementation in go in this case will CAS and go with the "fast path".
 		var nextOffset uint64
-		if mid == currSize {
+		if mid == currSegmentsSize {
 			nextOffset = log.segments[mid].getNextOffset()
 		} else {
 			nextOffset = log.segments[mid].nextOffset
@@ -242,11 +245,11 @@ func (log *Log) segmentSearch(offset int64) *Segment {
 		} else if uOffset < log.segments[mid].baseOffset {
 			right = mid - 1
 		} else {
-			return log.segments[mid]
+			return log.segments[mid], mid
 		}
 	}
 
-	return nil
+	return nil, 0
 }
 
 // Read reads the record corresponding to the given offset. It returns the corresponding record,
@@ -256,7 +259,7 @@ func (log *Log) Read(offset int64) (nn int, record []byte, err error) {
 		return 0, nil, ErrInvalidOffsetArg
 	}
 
-	targetSegment := log.segmentSearch(offset)
+	targetSegment, _ := log.segmentSearch(offset)
 	if targetSegment == nil {
 		return 0, nil, ErrSegOutOfRange
 	}
@@ -267,6 +270,59 @@ func (log *Log) Read(offset int64) (nn int, record []byte, err error) {
 	}
 
 	return nn, record, nil
+}
+
+// ReadAt reads `len(buf)` bytes from the commitlog starting at byte offset `startOffset`.
+// It returns the number of bytes read and the error, if any.
+// At the end of the commitlog, this error is io.EOF if the buffer is still not fully filled, i.e. n < len(buf).
+func (log *Log) ReadAt(buf []byte, startOffset int64) (n int, err error) {
+	if startOffset < -1 {
+		return 0, ErrInvalidOffsetArg
+	}
+
+	startSeg, startIdx := log.segmentSearch(startOffset)
+	if startSeg == nil {
+		return 0, ErrSegOutOfRange
+	}
+
+	startStorePosition, err := startSeg.getStoreRecordPosition(startOffset)
+	if err != nil {
+		return 0, err
+	}
+
+	pos := startStorePosition
+	idx := startIdx
+	currSeg := startSeg
+	var segReadSize int
+	for {
+		segReadSize, err = currSeg.ReadAt(buf[n:], pos)
+		n += segReadSize
+		pos += uint64(segReadSize)
+
+		if segReadSize != 0 && err == nil {
+			// currSeg EOF not yet reached, we can still fetch.
+			continue
+		}
+
+		if n == len(buf) || !errors.Is(err, io.EOF) {
+			break
+		}
+
+		// currSeg EOF is reached, move to the next one.
+		idx++
+		log.mu.RLock()
+		if idx >= len(log.segments) {
+			err = io.EOF
+			log.mu.RUnlock()
+			break
+		}
+		currSeg = log.segments[idx]
+		log.mu.RUnlock()
+
+		pos = 0
+	}
+
+	return n, err
 }
 
 // Explicit Flush/Commit of the log by flushing the active segment (old segments are already flushed to disk).
@@ -320,13 +376,14 @@ func (log *Log) SegmentsSize() int {
 	return len(log.segments)
 }
 
-// LastOffset returns the last tracked offset i.e. the newset offset so far.
-func (log *Log) LastOffset() uint64 {
+// NewsetOffset returns the last tracked offset i.e. the newset offset so far.
+func (log *Log) NewsetOffset() uint64 {
 	return log.loadActiveSeg().getNextOffset()
 }
 
-// OldestOffset returns the oldest tracked offset so far. If the `CollectSegments` never get triggered or after collecting
-// all the segments the oldest offset in this case should be equal 0.
+// OldestOffset returns the oldest tracked offset so far.
+// If the `CollectSegments` never get triggered or after collecting all the segments,
+// the oldest offset in this case should be equal to 0.
 func (log *Log) OldestOffset() uint64 {
 	log.mu.RLock()
 	defer log.mu.RUnlock()
@@ -371,10 +428,10 @@ func (log *Log) CollectSegments(offset uint64) error {
 	}
 
 	if err := grp.Wait(); err != nil {
-		return fmt.Errorf("the collect segments operation failed. "+
+		return fmt.Errorf("collect segments operation failed. "+
 			"The log may contain segements pointing to files that no longer exist in the log data directory. "+
 			"To recover from this failure, the log must be setup again from the current log data directory: %s. "+
-			"Original error: %w", log.Data_dir, err)
+			"%w", log.Data_dir, err)
 	}
 
 	log.segments = newSegments
