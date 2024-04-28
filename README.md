@@ -24,7 +24,7 @@ What is a commit log ? some resources to check out if you are curious:
 
 ## Quick start
 
-#### The commit log core library usage: [Core Library README](comLog/README.md)
+#### The Storage layout core library usage: [Core Library README](comLog/README.md)
 
 - Start the server:
 
