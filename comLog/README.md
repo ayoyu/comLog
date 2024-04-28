@@ -107,7 +107,7 @@ Note: The read operation will make an implicit flush of the records store buffer
 ```golang
 fmt.Printf("The current nbr of segments: %d\n", log.SegmentsSize())
 fmt.Printf("The oldest offset: %d\n", log.OldestOffset())
-fmt.Printf("The last (newest) offset: %d\n", log.LastOffset())
+fmt.Printf("The last (newest) offset: %d\n", log.NewsetOffset())
 ```
 
 #### Truncate commit log:
